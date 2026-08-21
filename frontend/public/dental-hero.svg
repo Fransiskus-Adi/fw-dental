@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 700" fill="none">
+  <defs>
+    <linearGradient id="aligner" x1="200" y1="100" x2="600" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f0f0f0" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#e0e0e0" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#d0d0d0" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="300" y1="100" x2="500" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="20" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Upper arch (teeth aligner) -->
+  <g filter="url(#shadow)" transform="translate(0, 20)">
+    <!-- Main arch shape -->
+    <path d="M150 350 C150 180, 400 80, 400 80 C400 80, 650 180, 650 350 C650 380, 630 400, 600 400 L200 400 C170 400, 150 380, 150 350Z" 
+          fill="url(#aligner)" stroke="#ccc" stroke-width="1"/>
+    
+    <!-- Individual tooth shapes on the arch -->
+    <!-- Front teeth -->
+    <rect x="355" y="100" width="35" height="55" rx="8" fill="#e8e8e8" stroke="#d0d0d0" stroke-width="0.5"/>
+    <rect x="400" y="100" width="35" height="55" rx="8" fill="#ececec" stroke="#d0d0d0" stroke-width="0.5"/>
+    
+    <!-- Adjacent teeth -->
+    <rect x="305" y="115" width="38" height="52" rx="8" fill="#e5e5e5" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-8, 324, 141)"/>
+    <rect x="445" y="115" width="38" height="52" rx="8" fill="#eaeaea" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(8, 464, 141)"/>
+    
+    <!-- Canines -->
+    <rect x="258" y="145" width="36" height="50" rx="7" fill="#e2e2e2" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-18, 276, 170)"/>
+    <rect x="495" y="145" width="36" height="50" rx="7" fill="#e7e7e7" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(18, 513, 170)"/>
+    
+    <!-- Premolars -->
+    <rect x="218" y="190" width="38" height="48" rx="7" fill="#e0e0e0" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-30, 237, 214)"/>
+    <rect x="535" y="190" width="38" height="48" rx="7" fill="#e5e5e5" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(30, 554, 214)"/>
+    
+    <!-- Molars -->
+    <rect x="188" y="245" width="40" height="48" rx="8" fill="#ddd" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-42, 208, 269)"/>
+    <rect x="565" y="245" width="40" height="48" rx="8" fill="#e2e2e2" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(42, 585, 269)"/>
+    
+    <rect x="168" y="300" width="42" height="50" rx="9" fill="#d8d8d8" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-52, 189, 325)"/>
+    <rect x="585" y="300" width="42" height="50" rx="9" fill="#e0e0e0" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(52, 606, 325)"/>
+    
+    <!-- Shine overlay -->
+    <path d="M200 300 C200 180, 400 100, 400 100 C400 100, 450 120, 450 200 C450 280, 250 320, 200 300Z" 
+          fill="url(#shine)"/>
+  </g>
+
+  <!-- Lower arch -->
+  <g filter="url(#shadow)" transform="translate(0, 40)">
+    <path d="M180 420 C180 410, 200 400, 220 400 L580 400 C600 400, 620 410, 620 420 C620 540, 400 620, 400 620 C400 620, 180 540, 180 420Z" 
+          fill="url(#aligner)" stroke="#ccc" stroke-width="1"/>
+    
+    <!-- Lower teeth -->
+    <rect x="360" y="410" width="32" height="48" rx="7" fill="#e8e8e8" stroke="#d0d0d0" stroke-width="0.5"/>
+    <rect x="400" y="410" width="32" height="48" rx="7" fill="#ececec" stroke="#d0d0d0" stroke-width="0.5"/>
+    
+    <rect x="318" y="415" width="34" height="46" rx="7" fill="#e5e5e5" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(6, 335, 438)"/>
+    <rect x="440" y="415" width="34" height="46" rx="7" fill="#eaeaea" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-6, 457, 438)"/>
+    
+    <rect x="278" y="430" width="34" height="44" rx="7" fill="#e2e2e2" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(15, 295, 452)"/>
+    <rect x="480" y="430" width="34" height="44" rx="7" fill="#e7e7e7" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-15, 497, 452)"/>
+    
+    <rect x="240" y="455" width="36" height="44" rx="8" fill="#e0e0e0" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(26, 258, 477)"/>
+    <rect x="518" y="455" width="36" height="44" rx="8" fill="#e5e5e5" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-26, 536, 477)"/>
+    
+    <rect x="210" y="485" width="38" height="44" rx="8" fill="#ddd" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(38, 229, 507)"/>
+    <rect x="548" y="485" width="38" height="44" rx="8" fill="#e2e2e2" stroke="#d0d0d0" stroke-width="0.5" transform="rotate(-38, 567, 507)"/>
+    
+    <!-- Lower shine -->
+    <path d="M250 420 C260 410, 350 405, 400 405 C420 405, 430 410, 420 440 C400 480, 300 460, 250 420Z" 
+          fill="url(#shine)"/>
+  </g>
+</svg>
