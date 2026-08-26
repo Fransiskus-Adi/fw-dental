@@ -65,4 +65,8 @@ export class AbsencesService {
 
     return this.absencesRepository.save(existing);
   }
+
+  async getAllAbsences(): Promise<Absence[]> {
+    return this.absencesRepository.findAllWithUsers();
+  }
 }

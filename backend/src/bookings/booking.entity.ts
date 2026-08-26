@@ -5,11 +5,13 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { Patient } from './patient.entity';
 import { Doctor } from '../doctors/doctor.entity';
 import { Service } from '../services/service.entity';
+import { Transaction } from '../transactions/transaction.entity';
 
 @Entity('bookings')
 export class Booking {
@@ -91,4 +93,7 @@ export class Booking {
   @ManyToOne(() => Service)
   @JoinColumn({ name: 'service_id' })
   service: Service;
+
+  @OneToMany(() => Transaction, (transaction) => transaction.booking)
+  transactions: Transaction[];
 }

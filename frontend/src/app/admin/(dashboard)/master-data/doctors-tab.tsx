@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface Doctor {
   id: string;
@@ -366,19 +367,20 @@ export default function DoctorsTab() {
 
               {/* Specialty & Phone */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">Specialization</label>
-                  <select
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Specialization</label>
+                  <CustomSelect
                     value={specialty}
-                    onChange={e => setSpecialty(e.target.value)}
-                    className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="Orthodontist Specialist">Orthodontist Specialist</option>
-                    <option value="Pediatric Dentist">Pediatric Dentist</option>
-                    <option value="Oral & Maxillofacial Surgeon">Oral & Maxillofacial Surgeon</option>
-                    <option value="Periodontist (Gum Specialist)">Periodontist (Gum Specialist)</option>
-                    <option value="General Dentist">General Dentist</option>
-                  </select>
+                    onChange={setSpecialty}
+                    options={[
+                      { value: "Orthodontist Specialist", label: "Orthodontist Specialist" },
+                      { value: "Pediatric Dentist", label: "Pediatric Dentist" },
+                      { value: "Oral & Maxillofacial Surgeon", label: "Oral & Maxillofacial Surgeon" },
+                      { value: "Periodontist (Gum Specialist)", label: "Periodontist (Gum Specialist)" },
+                      { value: "General Dentist", label: "General Dentist" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-500">Phone Contact</label>
@@ -461,16 +463,17 @@ export default function DoctorsTab() {
 
               {/* Status Selector (If Editing) */}
               {modalMode === "edit" && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">Status</label>
-                  <select
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Status</label>
+                  <CustomSelect
                     value={status}
-                    onChange={e => setStatus(e.target.value)}
-                    className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="On Leave">On Leave</option>
-                  </select>
+                    onChange={setStatus}
+                    options={[
+                      { value: "Active", label: "Active" },
+                      { value: "On Leave", label: "On Leave" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                  />
                 </div>
               )}
 

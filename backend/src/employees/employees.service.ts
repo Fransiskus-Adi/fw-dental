@@ -27,6 +27,7 @@ export class EmployeesService {
     email: string,
     password?: string,
     phone?: string,
+    roleCode?: string,
   ): Promise<Employee> {
     const existing = await this.employeesRepository.findByEmail(email);
     if (existing) {
@@ -40,7 +41,7 @@ export class EmployeesService {
     }
 
     // First create user record in users table
-    const user = await this.usersService.create(name, email, password, phone);
+    const user = await this.usersService.create(name, email, password, phone, roleCode);
 
     // Then save employee in employees table using the exact same ID
     return this.employeesRepository.createAndSave({
@@ -48,6 +49,7 @@ export class EmployeesService {
       name,
       email,
       phone,
+      roleCode,
     });
   }
 
@@ -57,6 +59,7 @@ export class EmployeesService {
     email: string,
     password?: string,
     phone?: string,
+    roleCode?: string,
   ): Promise<Employee> {
     const employee = await this.employeesRepository.findById(id);
     if (!employee) {
@@ -71,12 +74,13 @@ export class EmployeesService {
     }
 
     // Update user record first
-    await this.usersService.update(id, name, email, password, phone);
+    await this.usersService.update(id, name, email, password, phone, roleCode);
 
     // Then update employee record
     employee.name = name;
     employee.email = email;
     employee.phone = phone;
+    employee.roleCode = roleCode;
 
     return this.employeesRepository.createAndSave(employee);
   }

@@ -19,7 +19,8 @@ import {
   ChevronRight,
   Sparkles,
   Receipt,
-  UserCheck
+  UserCheck,
+  X
 } from "lucide-react";
 
 interface SidebarItemProps {
@@ -78,9 +79,14 @@ export default function AdminDashboardLayout({
   const [authorized, setAuthorized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMasterDataOpen, setIsMasterDataOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [isClockedIn, setIsClockedIn] = useState<boolean | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role?: string; permissions?: Record<string, boolean> } | null>(null);
+  const [isClockedOut, setIsClockedOut] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [toasts, setToasts] = useState<any[]>([]);
+  const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
@@ -105,6 +111,7 @@ export default function AdminDashboardLayout({
         localStorage.removeItem("admin_token");
         localStorage.removeItem("admin_token_timestamp");
         localStorage.removeItem("admin_user");
+        document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         router.push("/admin/login");
         return;
       }
@@ -127,6 +134,7 @@ export default function AdminDashboardLayout({
       localStorage.removeItem("admin_token");
       localStorage.removeItem("admin_token_timestamp");
       localStorage.removeItem("admin_user");
+      document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       router.push("/admin/login");
     }
   }, [router]);
@@ -142,10 +150,12 @@ export default function AdminDashboardLayout({
         })
         .then((data) => {
           setIsClockedIn(!!data);
+          setIsClockedOut(!!data?.clockOut);
         })
         .catch((err) => {
           console.error("Failed to check daily absence", err);
           setIsClockedIn(false);
+          setIsClockedOut(false);
         });
     };
 
@@ -161,6 +171,149 @@ export default function AdminDashboardLayout({
     }
   }, [isClockedIn, pathname, router]);
 
+  const playNotificationSound = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const now = ctx.currentTime;
+
+      // Ding (A5)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(880, now);
+      gain1.gain.setValueAtTime(0.08, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+
+      // Dong (E5)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(659.25, now + 0.12);
+      gain2.gain.setValueAtTime(0.08, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.55);
+    } catch (e) {
+      console.error("Failed to play chime:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!authorized) return;
+
+    const saved = localStorage.getItem("admin_notifications");
+    if (saved) {
+      try {
+        setNotifications(JSON.parse(saved));
+      } catch (e) {}
+    }
+
+    const eventSource = new EventSource("/api/notifications/sse");
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const { event: eventName, payload, timestamp } = data;
+
+        let shouldNotify = false;
+        let title = "";
+        let message = "";
+        let redirectUrl = "";
+
+        if (eventName === "BOOKING_CREATED") {
+          shouldNotify = true;
+          title = "New Booking Appointment!";
+          message = `${payload.patientName} booked ${payload.serviceName} at ${payload.time} (${payload.date})`;
+          redirectUrl = "/admin/bookings";
+        } else if (eventName === "CLOCK_IN_REMINDER") {
+          if (isClockedIn === false) {
+            shouldNotify = true;
+            title = "Clock In Reminder";
+            message = payload.message || "Please clock in to start your shift!";
+            redirectUrl = "/admin/absence";
+          }
+        } else if (eventName === "CLOCK_OUT_REMINDER") {
+          if (isClockedIn === true && !isClockedOut) {
+            shouldNotify = true;
+            title = "Clock Out Reminder";
+            message = payload.message || "Don't forget to clock out before you leave!";
+            redirectUrl = "/admin/absence";
+          }
+        }
+
+        if (shouldNotify) {
+          playNotificationSound();
+
+          const newNotif = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            type: eventName,
+            title,
+            message,
+            timestamp: timestamp || new Date().toISOString(),
+            read: false,
+            redirectUrl,
+          };
+
+          setNotifications((prev) => {
+            const updated = [newNotif, ...prev].slice(0, 50);
+            localStorage.setItem("admin_notifications", JSON.stringify(updated));
+            return updated;
+          });
+
+          setToasts((prev) => [...prev, newNotif]);
+        }
+      } catch (err) {
+        console.error("Error parsing SSE notification:", err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Connection Error:", err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [authorized, isClockedIn, isClockedOut]);
+
+  useEffect(() => {
+    if (toasts.length > 0) {
+      const timer = setTimeout(() => {
+        setToasts((prev) => prev.slice(1));
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [toasts]);
+
+  const clearNotifications = () => {
+    setNotifications([]);
+    localStorage.removeItem("admin_notifications");
+  };
+
+  const handleNotificationClick = (notif: any) => {
+    setNotifications((prev) => {
+      const updated = prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n));
+      localStorage.setItem("admin_notifications", JSON.stringify(updated));
+      return updated;
+    });
+
+    setIsNotificationMenuOpen(false);
+    
+    if (notif.redirectUrl) {
+      router.push(notif.redirectUrl);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
   const navigation = [
     { icon: <UserCheck className="size-5" />, href: "/admin/absence", label: "Absence" },
     { icon: <LayoutDashboard className="size-5" />, href: "/admin", label: "Dashboard" },
@@ -171,10 +324,30 @@ export default function AdminDashboardLayout({
     { icon: <Settings className="size-5" />, href: "/admin/settings", label: "Settings" },
   ];
 
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.href === "/admin/absence") return true;
+
+    const permissions = currentUser?.permissions;
+    if (!permissions) return false;
+
+    if (item.href === "/admin") return !!permissions.page_dashboard;
+    if (item.href === "/admin/bookings") return !!permissions.page_bookings;
+    if (item.href === "/admin/transactions") return !!permissions.page_transactions;
+    if (item.href === "/admin/schedules") return !!permissions.page_schedules;
+    if (item.href === "/admin/settings") return !!permissions.page_settings;
+    
+    if (item.href === "/admin/master-data") {
+      return !!(permissions.page_employees || permissions.page_doctors || permissions.page_roles);
+    }
+    
+    return true;
+  });
+
   const handleLogout = () => {
     localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_token_timestamp");
     localStorage.removeItem("admin_user");
+    document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     router.push("/admin/login");
   };
 
@@ -210,7 +383,7 @@ export default function AdminDashboardLayout({
 
           {/* Navigation Items */}
           <nav className={`w-full flex flex-col gap-2 ${isExpanded ? "px-3" : "items-center"}`}>
-            {navigation.map((item) => {
+            {filteredNavigation.map((item) => {
               const isAbsence = item.href === "/admin/absence";
               const disabled = isClockedIn === false && !isAbsence;
 
@@ -253,30 +426,34 @@ export default function AdminDashboardLayout({
                               <div className="px-3 py-1.5 text-[10px] text-gray-400 font-extrabold uppercase tracking-wider select-none border-b border-gray-50 mb-1">
                                 Master Data Menu
                               </div>
-                              <Link 
-                                href="/admin/master-data/employees"
-                                onClick={() => setIsMasterDataOpen(false)}
-                                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                  pathname === "/admin/master-data/employees"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Users className="size-4" />
-                                Employees
-                              </Link>
-                              <Link 
-                                href="/admin/master-data/doctors"
-                                onClick={() => setIsMasterDataOpen(false)}
-                                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                  pathname === "/admin/master-data/doctors"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Stethoscope className="size-4" />
-                                Doctors
-                              </Link>
+                              {currentUser?.permissions?.page_employees && (
+                                <Link 
+                                  href="/admin/master-data/employees"
+                                  onClick={() => setIsMasterDataOpen(false)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
+                                    pathname === "/admin/master-data/employees"
+                                      ? "bg-[#008080]/10 text-[#008080]"
+                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                  }`}
+                                >
+                                  <Users className="size-4" />
+                                  Employees
+                                </Link>
+                              )}
+                              {currentUser?.permissions?.page_doctors && (
+                                <Link 
+                                  href="/admin/master-data/doctors"
+                                  onClick={() => setIsMasterDataOpen(false)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
+                                    pathname === "/admin/master-data/doctors"
+                                      ? "bg-[#008080]/10 text-[#008080]"
+                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                  }`}
+                                >
+                                  <Stethoscope className="size-4" />
+                                  Doctors
+                                </Link>
+                              )}
                               <Link 
                                 href="/admin/master-data/services"
                                 onClick={() => setIsMasterDataOpen(false)}
@@ -289,18 +466,20 @@ export default function AdminDashboardLayout({
                                 <Sparkles className="size-4" />
                                 Services
                               </Link>
-                              <Link 
-                                href="/admin/master-data/roles"
-                                onClick={() => setIsMasterDataOpen(false)}
-                                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                  pathname === "/admin/master-data/roles"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Shield className="size-4" />
-                                Roles
-                              </Link>
+                              {currentUser?.permissions?.page_roles && (
+                                <Link 
+                                  href="/admin/master-data/roles"
+                                  onClick={() => setIsMasterDataOpen(false)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
+                                    pathname === "/admin/master-data/roles"
+                                      ? "bg-[#008080]/10 text-[#008080]"
+                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                  }`}
+                                >
+                                  <Shield className="size-4" />
+                                  Roles
+                                </Link>
+                              )}
                             </div>
                           </>
                         )}
@@ -336,28 +515,32 @@ export default function AdminDashboardLayout({
                         {/* Inline Accordion Links */}
                         {isMasterDataOpen && !disabled && (
                           <div className="flex flex-col pl-10 pr-2 py-1 gap-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <Link 
-                              href="/admin/master-data/employees"
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                pathname === "/admin/master-data/employees"
-                                  ? "bg-[#008080]/10 text-[#008080]"
-                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                              }`}
-                            >
-                              <Users className="size-3.5" />
-                              Employees
-                            </Link>
-                            <Link 
-                              href="/admin/master-data/doctors"
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                pathname === "/admin/master-data/doctors"
-                                  ? "bg-[#008080]/10 text-[#008080]"
-                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                              }`}
-                            >
-                              <Stethoscope className="size-3.5" />
-                              Doctors
-                            </Link>
+                            {currentUser?.permissions?.page_employees && (
+                              <Link 
+                                href="/admin/master-data/employees"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
+                                  pathname === "/admin/master-data/employees"
+                                    ? "bg-[#008080]/10 text-[#008080]"
+                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                }`}
+                              >
+                                <Users className="size-3.5" />
+                                Employees
+                              </Link>
+                            )}
+                            {currentUser?.permissions?.page_doctors && (
+                              <Link 
+                                href="/admin/master-data/doctors"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
+                                  pathname === "/admin/master-data/doctors"
+                                    ? "bg-[#008080]/10 text-[#008080]"
+                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                }`}
+                              >
+                                <Stethoscope className="size-3.5" />
+                                Doctors
+                              </Link>
+                            )}
                             <Link 
                               href="/admin/master-data/services"
                               className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
@@ -369,17 +552,19 @@ export default function AdminDashboardLayout({
                               <Sparkles className="size-3.5" />
                               Services
                             </Link>
-                            <Link 
-                              href="/admin/master-data/roles"
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                pathname === "/admin/master-data/roles"
-                                  ? "bg-[#008080]/10 text-[#008080]"
-                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                              }`}
-                            >
-                              <Shield className="size-3.5" />
-                              Roles
-                            </Link>
+                            {currentUser?.permissions?.page_roles && (
+                              <Link 
+                                href="/admin/master-data/roles"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
+                                  pathname === "/admin/master-data/roles"
+                                    ? "bg-[#008080]/10 text-[#008080]"
+                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                                }`}
+                              >
+                                <Shield className="size-3.5" />
+                                Roles
+                              </Link>
+                            )}
                           </div>
                         )}
                       </div>
@@ -407,39 +592,6 @@ export default function AdminDashboardLayout({
             })}
           </nav>
         </div>
-
-        {/* Bottom Actions */}
-        <div className={`w-full flex flex-col gap-4 ${isExpanded ? "px-5" : "items-center"}`}>
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className={`size-10 rounded-xl flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all cursor-pointer ${
-              isExpanded ? "self-start ml-2" : ""
-            }`}
-            title="Log Out"
-          >
-            <LogOut className="size-5" />
-          </button>
-
-          {/* Profile Avatar Card */}
-          <div className={`flex items-center w-full ${isExpanded ? "justify-start gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-100" : "justify-center"}`}>
-            <div className="size-10 rounded-full bg-gradient-to-tr from-teal-400 to-[#008080] p-0.5 shadow-sm border border-white cursor-pointer hover:scale-105 transition-all shrink-0">
-              <div className="size-full bg-white rounded-full flex items-center justify-center font-bold text-xs text-[#008080]">
-                {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : "AD"}
-              </div>
-            </div>
-            {isExpanded && (
-              <div className="flex flex-col min-w-0 animate-in fade-in duration-200">
-                <span className="font-bold text-xs text-gray-800 leading-none truncate max-w-[120px]">
-                  {currentUser?.name || "Admin User"}
-                </span>
-                <span className="text-[9px] text-gray-400 font-semibold mt-1 truncate max-w-[120px]">
-                  {currentUser?.email || "admin@fwdental.com"}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -463,32 +615,126 @@ export default function AdminDashboardLayout({
 
           {/* Right Header Icons */}
           <div className="flex items-center gap-5">
-            {/* Country Flag Flag (US) */}
-            <div className="size-8 rounded-full flex items-center justify-center bg-gray-50 border border-gray-100 cursor-pointer text-base hover:bg-gray-100 transition-all" title="Language">
-              🇺🇸
+            {/* Notification Bell */}
+            <div className="relative">
+              <button 
+                onClick={() => setIsNotificationMenuOpen(!isNotificationMenuOpen)}
+                className="relative size-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-all cursor-pointer animate-in fade-in duration-205"
+              >
+                <Bell className="size-5" />
+                {/* Notification Badge Dot */}
+                {unreadCount > 0 && (
+                  <span className="absolute top-2.5 right-2.5 size-2 bg-orange-500 rounded-full ring-2 ring-white" />
+                )}
+              </button>
+
+              {isNotificationMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-45 bg-transparent"
+                    onClick={() => setIsNotificationMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 bg-white border border-gray-150 rounded-2xl shadow-xl py-3 px-4 w-80 z-50 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center justify-between min-w-0">
+                      <span className="font-bold text-xs text-gray-800 leading-normal">
+                        Notifications ({unreadCount} new)
+                      </span>
+                      {notifications.length > 0 && (
+                        <button 
+                          onClick={clearNotifications}
+                          className="text-[10px] text-[#008080] hover:underline font-semibold cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="h-px bg-gray-100 -mx-4" />
+
+                    <div className="max-h-60 overflow-y-auto flex flex-col gap-2 -mx-2 px-2">
+                      {notifications.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-gray-400 font-medium">
+                          No notifications yet
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div 
+                            key={notif.id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={`p-2.5 rounded-xl border transition-all cursor-pointer flex gap-2.5 items-start text-left ${
+                              notif.read 
+                                ? 'bg-white border-gray-50 hover:bg-gray-50/50' 
+                                : 'bg-[#008080]/5 border-[#008080]/10 hover:bg-[#008080]/10'
+                            }`}
+                          >
+                            <div className={`p-1.5 rounded-lg shrink-0 ${
+                              notif.type === 'BOOKING_CREATED' ? 'bg-teal-50 text-teal-600' : 'bg-amber-50 text-amber-600'
+                            }`}>
+                              {notif.type === 'BOOKING_CREATED' ? <Calendar className="size-3.5" /> : <Clock className="size-3.5" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-[11px] text-gray-800 leading-tight">
+                                {notif.title}
+                              </p>
+                              <p className="text-[10px] text-gray-500 font-medium leading-snug mt-0.5 whitespace-normal break-words">
+                                {notif.message}
+                              </p>
+                              <span className="text-[9px] text-gray-400 font-semibold block mt-1">
+                                {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Notification Bell */}
-            <button className="relative size-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-all">
-              <Bell className="size-5" />
-              {/* Notification Badge Dot */}
-              <span className="absolute top-2.5 right-2.5 size-2 bg-orange-500 rounded-full ring-2 ring-white" />
-            </button>
+            {/* User Profile Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="size-10 rounded-full bg-gradient-to-tr from-teal-400 to-[#008080] p-0.5 shadow-sm border border-white cursor-pointer hover:scale-105 transition-all shrink-0 flex items-center justify-center"
+              >
+                <div className="size-full bg-white rounded-full flex items-center justify-center font-bold text-xs text-[#008080]">
+                  {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : "AD"}
+                </div>
+              </button>
 
-            {/* Grid Menu Icon */}
-            <button className="size-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-all">
-              <Grid className="size-5" />
-            </button>
+              {isUserMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 bg-transparent"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 bg-white border border-gray-150 rounded-2xl shadow-xl py-3 px-4 w-56 z-50 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-bold text-xs text-gray-800 leading-normal truncate">
+                        {currentUser?.name || "Admin User"}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-semibold mt-0.5 truncate">
+                        {currentUser?.email || "admin@fwdental.com"}
+                      </span>
+                    </div>
 
-            {/* Settings Gear Icon */}
-            <Link
-              href={isClockedIn === false ? "#" : "/admin/settings"}
-              className={`size-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-all ${
-                isClockedIn === false ? "opacity-50 pointer-events-none cursor-not-allowed" : ""
-              }`}
-            >
-              <Settings className="size-5" />
-            </Link>
+                    <div className="h-px bg-gray-100 -mx-4" />
+
+                    <button
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center gap-2.5 w-full py-2 px-3 rounded-xl font-bold text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer text-left"
+                    >
+                      <LogOut className="size-4" />
+                      <span>Log Out</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
@@ -496,6 +742,53 @@ export default function AdminDashboardLayout({
         <main className="flex-1 overflow-hidden bg-[#f8f9fd] p-6 flex flex-col">
           {children}
         </main>
+      </div>
+
+      {/* Floating Toast Alerts Container */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className="pointer-events-auto bg-white rounded-2xl shadow-xl border border-gray-150 p-4 flex gap-3.5 items-start animate-in slide-in-from-bottom-5 fade-in duration-300"
+          >
+            <div className={`p-2 rounded-xl shrink-0 ${
+              toast.type === 'BOOKING_CREATED' ? 'bg-teal-50 text-teal-600' : 'bg-amber-50 text-amber-600'
+            }`}>
+              {toast.type === 'BOOKING_CREATED' ? <Calendar className="size-5" /> : <Clock className="size-5" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-xs text-gray-800 leading-none text-left">
+                {toast.title}
+              </p>
+              <p className="text-[11px] text-gray-500 font-semibold leading-normal mt-1 text-left">
+                {toast.message}
+              </p>
+              <div className="flex gap-2.5 mt-2 justify-start">
+                <button
+                  onClick={() => {
+                    handleNotificationClick(toast);
+                    setToasts(prev => prev.filter(t => t.id !== toast.id));
+                  }}
+                  className="px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  View
+                </button>
+                <button
+                  onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                  className="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 text-gray-500 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer shrink-0 mt-0.5"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

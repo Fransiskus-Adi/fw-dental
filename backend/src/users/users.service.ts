@@ -23,6 +23,10 @@ export class UsersService {
     return this.usersRepository.findByEmail(email);
   }
 
+  async findByEmailOrPhone(emailOrPhone: string): Promise<User | null> {
+    return this.usersRepository.findByEmailOrPhone(emailOrPhone);
+  }
+
   async findByEmailWithPassword(email: string): Promise<User | null> {
     return this.usersRepository.findByEmailWithPassword(email);
   }
@@ -32,6 +36,7 @@ export class UsersService {
     email: string,
     password?: string,
     phone?: string,
+    roleCode?: string,
   ): Promise<User> {
     const existing = await this.usersRepository.findByEmail(email);
     if (existing) {
@@ -49,6 +54,7 @@ export class UsersService {
       email,
       password: hashedPassword,
       phone,
+      roleCode,
     });
   }
 
@@ -58,6 +64,7 @@ export class UsersService {
     email: string,
     password?: string,
     phone?: string,
+    roleCode?: string,
   ): Promise<User> {
     const user = await this.usersRepository.findById(id);
     if (!user) {
@@ -74,6 +81,7 @@ export class UsersService {
     user.name = name;
     user.email = email;
     user.phone = phone;
+    user.roleCode = roleCode;
 
     if (password) {
       const salt = await bcrypt.genSalt(10);

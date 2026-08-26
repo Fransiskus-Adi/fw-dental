@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface TransactionItem {
   id?: string;
@@ -694,20 +695,18 @@ export default function AdminTransactionsPage() {
                 )}
               </div>
 
-              {/* General Settings */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">Assigned Doctor (Dentist)</label>
-                  <select
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Assigned Doctor (Dentist)</label>
+                  <CustomSelect
                     value={selectedDoctorId}
-                    onChange={e => setSelectedDoctorId(e.target.value)}
-                    className="w-full h-10 border border-gray-200 rounded-xl text-xs px-3 bg-white outline-none focus:border-[#008080]"
-                  >
-                    <option value="">Select Doctor</option>
-                    {doctors.map(d => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.specialty})</option>
-                    ))}
-                  </select>
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Select Doctor" },
+                      ...doctors.map(d => ({ value: d.id, label: `${d.name} (${d.specialty})` }))
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-xs font-medium text-gray-700"
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -721,17 +720,18 @@ export default function AdminTransactionsPage() {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">Initial Payment Status</label>
-                  <select
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Initial Payment Status</label>
+                  <CustomSelect
                     value={paymentStatus}
-                    onChange={e => setPaymentStatus(e.target.value)}
-                    className="w-full h-10 border border-gray-200 rounded-xl text-xs px-3 bg-white outline-none focus:border-[#008080]"
-                  >
-                    <option value="UNPAID">UNPAID (Pending Ledger)</option>
-                    <option value="PAID">PAID</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                  </select>
+                    onChange={setPaymentStatus}
+                    options={[
+                      { value: "UNPAID", label: "UNPAID (Pending Ledger)" },
+                      { value: "PAID", label: "PAID" },
+                      { value: "CANCELLED", label: "CANCELLED" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-xs font-medium text-gray-700"
+                  />
                 </div>
               </div>
 
@@ -755,18 +755,20 @@ export default function AdminTransactionsPage() {
                     <div key={idx} className="flex flex-col md:flex-row md:items-end gap-3 bg-gray-50/20 p-3 rounded-xl border border-gray-100">
                       
                       {/* Service Dropdown */}
-                      <div className="flex-1 space-y-1">
-                        <label className="text-[10px] font-semibold text-gray-400">Select Clinic Treatment</label>
-                        <select
+                      <div className="flex-1 space-y-1 flex flex-col">
+                        <label className="text-[10px] font-semibold text-gray-400 mb-0.5">Select Clinic Treatment</label>
+                        <CustomSelect
                           value={item.serviceId || "custom"}
-                          onChange={e => updateCheckoutItem(idx, "serviceId", e.target.value)}
-                          className="w-full h-9 border border-gray-200 rounded-lg text-xs px-2.5 bg-white outline-none focus:border-[#008080]"
-                        >
-                          <option value="custom">-- Custom / Other Item (Medicine, Extra Fee) --</option>
-                          {services.map(s => (
-                            <option key={s.id} value={s.id}>{s.name} (Starts: {formatCurrency(s.priceFrom)})</option>
-                          ))}
-                        </select>
+                          onChange={val => updateCheckoutItem(idx, "serviceId", val)}
+                          options={[
+                            { value: "custom", label: "-- Custom / Other Item (Medicine, Extra Fee) --" },
+                            ...services.map(s => ({
+                              value: s.id,
+                              label: `${s.name} (Starts: ${formatCurrency(s.priceFrom)})`
+                            }))
+                          ]}
+                          triggerClassName="w-full h-9 border-gray-200 rounded-lg text-xs font-medium text-gray-700 font-sans"
+                        />
                       </div>
 
                       {/* Item Name (Editable if custom) */}
@@ -834,19 +836,20 @@ export default function AdminTransactionsPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
                 {/* Notes and Payment Method */}
                 <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-gray-500">Payment Method</label>
-                    <select
+                  <div className="space-y-1 flex flex-col">
+                    <label className="text-xs font-semibold text-gray-500 mb-1">Payment Method</label>
+                    <CustomSelect
                       value={paymentMethod}
-                      onChange={e => setPaymentMethod(e.target.value)}
-                      className="w-full h-10 border border-gray-200 rounded-xl text-xs px-3 bg-white outline-none focus:border-[#008080]"
-                    >
-                      <option value="CASH">CASH</option>
-                      <option value="DEBIT_CARD">DEBIT CARD</option>
-                      <option value="CREDIT_CARD">CREDIT CARD</option>
-                      <option value="QRIS">QRIS / SCAN MOCK</option>
-                      <option value="BANK_TRANSFER">BANK TRANSFER</option>
-                    </select>
+                      onChange={setPaymentMethod}
+                      options={[
+                        { value: "CASH", label: "CASH" },
+                        { value: "DEBIT_CARD", label: "DEBIT CARD" },
+                        { value: "CREDIT_CARD", label: "CREDIT CARD" },
+                        { value: "QRIS", label: "QRIS / SCAN MOCK" },
+                        { value: "BANK_TRANSFER", label: "BANK TRANSFER" }
+                      ]}
+                      triggerClassName="w-full h-10 border-gray-200 rounded-xl text-xs font-medium text-gray-700 font-sans"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500">Internal Transaction Notes (Staff Only)</label>

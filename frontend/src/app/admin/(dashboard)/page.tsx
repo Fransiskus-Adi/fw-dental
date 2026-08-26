@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users,
   ShoppingBag,
@@ -8,33 +8,169 @@ import {
   TrendingUp,
   Activity,
   CalendarDays,
-  UserCheck
+  UserCheck,
+  Loader2
 } from "lucide-react";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("1Y");
+  const [globalFilter, setGlobalFilter] = useState("year");
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Mock statistics data
-  const stats = {
-    balance: "Rp 8.876.540.000",
-    customers: "423.84K",
-    customersGrowth: "+4.5%",
-    orders: "622.35K",
-    ordersGrowth: "+2.5%",
-    earnings: "Rp 9.485.500.000",
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("http://localhost:3001/dashboard/stats");
+      if (!res.ok) throw new Error("Failed to load dashboard statistics");
+      const json = await res.json();
+      setData(json);
+    } catch (err: any) {
+      setError(err.message || "An error occurred while loading dashboard statistics");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Mock appointments for a dental clinic context
-  const upcomingAppointments = [
-    { id: 1, patient: "Sarah Connor", doctor: "Dr. Aris", time: "09:00 AM", treatment: "Teeth Whitening", status: "Confirmed" },
-    { id: 2, patient: "John Doe", doctor: "Dr. Brenda", time: "10:30 AM", treatment: "Dental Crown", status: "Pending" },
-    { id: 3, patient: "Kyle Reese", doctor: "Dr. Catur", time: "01:00 PM", treatment: "Root Canal", status: "Confirmed" },
-    { id: 4, patient: "Ellen Ripley", doctor: "Dr. Aris", time: "03:30 PM", treatment: "General Checkup", status: "Completed" }
+  const formatCurrency = (val: number | string) => {
+    const num = Number(val) || 0;
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0
+    }).format(num).replace(/\s/g, "");
+  };
+
+  const formatNumber = (num: number) => {
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
+    return num.toString();
+  };
+
+  const formatShortAmount = (val: number) => {
+    if (val >= 1e9) return `${(val / 1e9).toFixed(1)}B`;
+    if (val >= 1e6) return `${(val / 1e6).toFixed(1)}M`;
+    if (val >= 1e3) return `${(val / 1e3).toFixed(1)}K`;
+    return Math.round(val).toString();
+  };
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gray-50/50 rounded-3xl border border-gray-150 py-20">
+        <Loader2 className="size-10 text-[#008080] animate-spin" />
+        <p className="text-sm text-gray-500 font-bold mt-4 select-none">Loading dashboard metrics...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-white rounded-3xl border border-red-100 p-8 text-center">
+        <p className="text-red-500 font-semibold mb-2">{error}</p>
+        <button
+          onClick={fetchStats}
+          className="px-4 py-2 bg-[#008080] text-white text-xs font-bold rounded-xl hover:bg-[#006666] transition-all animate-scale-up"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // Get active statistics source based on globalFilter selection
+  const statsSource = data?.[globalFilter] || data?.year || {};
+
+  const stats = {
+    balance: formatCurrency(statsSource.balance ?? 0),
+    customers: formatNumber(statsSource.customers ?? 0),
+    customersGrowth: statsSource.customersGrowth ?? "0.0%",
+    orders: formatNumber(statsSource.orders ?? 0),
+    ordersGrowth: statsSource.ordersGrowth ?? "0.0%",
+    earnings: formatCurrency(statsSource.earnings ?? 0),
+  };
+
+  const upcomingAppointments = data?.upcomingAppointments || [];
+  
+  // Chart calculation
+  const points = data?.chartData?.[activeTab] || [];
+  const maxEarnings = Math.max(...points.map((p: any) => p.earnings), 0);
+  const divisor = maxEarnings > 0 ? maxEarnings : 1;
+
+  // Generate SVG coordinates (viewBox width: 900, height: 170)
+  const coords = points.map((p: any, idx: number) => {
+    const x = points.length > 1 ? idx * (900 / (points.length - 1)) : 450;
+    const y = 140 - (p.earnings / divisor) * (140 - 20); // Y ranges from 20 to 140
+    return { x, y };
+  });
+
+  const linePath = coords.length > 0
+    ? `M ${coords.map((c: any) => `${c.x} ${c.y}`).join(" L ")}`
+    : "";
+
+  const areaPath = coords.length > 0
+    ? `M 0 170 L ${coords.map((c: any) => `${c.x} ${c.y}`).join(" L ")} L 900 170 Z`
+    : "";
+
+  const yAxisLabels = [
+    formatShortAmount(maxEarnings),
+    formatShortAmount(maxEarnings * 0.8),
+    formatShortAmount(maxEarnings * 0.6),
+    formatShortAmount(maxEarnings * 0.4),
+    formatShortAmount(maxEarnings * 0.2),
+    "0"
   ];
+
+  const getGrowthLabel = () => {
+    if (globalFilter === "today") return "vs yesterday";
+    if (globalFilter === "week") return "vs last week";
+    if (globalFilter === "month") return "vs last month";
+    return "vs last year";
+  };
+
+  const getBalanceCardTitle = () => {
+    if (globalFilter === "today") return "Earnings Today";
+    if (globalFilter === "week") return "Earnings This Week";
+    if (globalFilter === "month") return "Earnings This Month";
+    return "Current Balance";
+  };
 
   return (
     <div className="h-full flex flex-col gap-4 font-sans overflow-hidden min-h-0">
       
+      {/* Title Header with Global Filter */}
+      <div className="flex-none flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
+        <div>
+          <h2 className="text-xl font-extrabold text-gray-800 tracking-tight leading-none">
+            Dashboard Home
+          </h2>
+          <p className="text-[11px] text-gray-400 font-bold mt-1.5 uppercase tracking-wide">
+            Real-time clinic metrics & statistics
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider select-none">
+            Global Filter:
+          </span>
+          <CustomSelect
+            value={globalFilter}
+            onChange={setGlobalFilter}
+            options={[
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "year", label: "This Year / Overall" }
+            ]}
+          />
+        </div>
+      </div>
+
       {/* Top Cards Row - Fixed height */}
       <div className="flex-none grid grid-cols-1 lg:grid-cols-12 gap-4 h-[115px]">
         
@@ -49,7 +185,7 @@ export default function AdminDashboard() {
                 {stats.balance}
               </p>
               <p className="text-[10px] text-gray-400 font-bold tracking-wide uppercase">
-                Current balance
+                {getBalanceCardTitle()}
               </p>
             </div>
           </div>
@@ -98,11 +234,15 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 leading-none">
-            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-green-50 text-[#10b981] rounded-full">
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              stats.customersGrowth.startsWith("-")
+                ? "bg-red-50 text-red-550"
+                : "bg-green-50 text-[#10b981]"
+            }`}>
               {stats.customersGrowth}
             </span>
-            <span className="text-[10px] text-gray-400 font-medium">
-              This month
+            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+              {getGrowthLabel()}
             </span>
           </div>
         </div>
@@ -123,11 +263,15 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 leading-none">
-            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-green-50 text-[#10b981] rounded-full">
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              stats.ordersGrowth.startsWith("-")
+                ? "bg-red-50 text-red-550"
+                : "bg-green-50 text-[#10b981]"
+            }`}>
               {stats.ordersGrowth}
             </span>
-            <span className="text-[10px] text-gray-400 font-medium">
-              This month
+            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+              {getGrowthLabel()}
             </span>
           </div>
         </div>
@@ -172,97 +316,85 @@ export default function AdminDashboard() {
         <div className="flex-1 min-h-0 relative w-full flex mt-3">
           {/* Main Chart Area */}
           <div className="flex-1 h-full pr-10 relative min-h-0">
-            <svg
-              className="w-full h-full"
-              viewBox="0 0 900 170"
-              preserveAspectRatio="none"
-            >
-              {/* Gradients */}
-              <defs>
-                <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#008080" stopOpacity="0.18" />
-                  <stop offset="100%" stopColor="#008080" stopOpacity="0.00" />
-                </linearGradient>
-              </defs>
+            {coords.length > 0 ? (
+              <svg
+                className="w-full h-full"
+                viewBox="0 0 900 170"
+                preserveAspectRatio="none"
+              >
+                {/* Gradients */}
+                <defs>
+                  <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#008080" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#008080" stopOpacity="0.00" />
+                  </linearGradient>
+                </defs>
 
-              {/* Grid Lines (Horizontal) */}
-              <line x1="0" y1="20" x2="900" y2="20" stroke="#f9fafb" strokeWidth="1" />
-              <line x1="0" y1="50" x2="900" y2="50" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
-              <line x1="0" y1="80" x2="900" y2="80" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
-              <line x1="0" y1="110" x2="900" y2="110" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
-              <line x1="0" y1="140" x2="900" y2="140" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
+                {/* Grid Lines (Horizontal) */}
+                <line x1="0" y1="20" x2="900" y2="20" stroke="#f9fafb" strokeWidth="1" />
+                <line x1="0" y1="50" x2="900" y2="50" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
+                <line x1="0" y1="80" x2="900" y2="80" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
+                <line x1="0" y1="110" x2="900" y2="110" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
+                <line x1="0" y1="140" x2="900" y2="140" stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
 
-              {/* Shaded Area Under Curve */}
-              <path
-                d="
-                  M 0 120 
-                  C 50 100, 70 85, 100 95
-                  C 130 105, 160 120, 200 100
-                  C 250 70, 280 85, 310 102
-                  C 350 125, 390 100, 420 85
-                  C 450 70, 480 100, 520 100
-                  C 560 100, 590 70, 620 66
-                  C 650 63, 680 90, 720 85
-                  C 770 70, 800 50, 840 60
-                  C 870 67, 880 53, 900 32
-                  L 900 170 L 0 170 Z
-                "
-                fill="url(#chartAreaGradient)"
-              />
+                {/* Shaded Area Under Curve */}
+                <path d={areaPath} fill="url(#chartAreaGradient)" />
 
-              {/* Curve Line */}
-              <path
-                d="
-                  M 0 120 
-                  C 50 100, 70 85, 100 95
-                  C 130 105, 160 120, 200 100
-                  C 250 70, 280 85, 310 102
-                  C 350 125, 390 100, 420 85
-                  C 450 70, 480 100, 520 100
-                  C 560 100, 590 70, 620 66
-                  C 650 63, 680 90, 720 85
-                  C 770 70, 800 50, 840 60
-                  C 870 67, 880 53, 900 32
-                "
-                fill="none"
-                stroke="#008080"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
+                {/* Curve Line */}
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke="#008080"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
 
-              {/* Data points dots */}
-              <circle cx="200" cy="100" r="3.5" fill="#008080" stroke="white" strokeWidth="1.5" />
-              <circle cx="420" cy="85" r="3.5" fill="#008080" stroke="white" strokeWidth="1.5" />
-              <circle cx="620" cy="66" r="3.5" fill="#008080" stroke="white" strokeWidth="1.5" />
-              <circle cx="900" cy="32" r="3.5" fill="#008080" stroke="white" strokeWidth="1.5" />
-            </svg>
+                {/* Data points dots */}
+                {coords.map((c: any, idx: number) => (
+                  <circle
+                    key={idx}
+                    cx={c.x}
+                    cy={c.y}
+                    r="3.5"
+                    fill="#008080"
+                    stroke="white"
+                    strokeWidth="1.5"
+                  />
+                ))}
+              </svg>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 font-semibold select-none">
+                No transaction data for this period
+              </div>
+            )}
           </div>
 
           {/* Y Axis Labels (Right Aligned as in image) */}
           <div className="absolute right-0 top-0 bottom-0 w-8 flex flex-col justify-between text-right text-[9px] text-gray-400 font-bold select-none h-[140px] mt-[10px]">
-            <span>100k</span>
-            <span>80k</span>
-            <span>60k</span>
-            <span>40k</span>
-            <span>20k</span>
-            <span>0k</span>
+            {yAxisLabels.map((lbl, idx) => (
+              <span key={idx}>{lbl}</span>
+            ))}
           </div>
         </div>
 
         {/* X Axis Labels */}
         <div className="flex justify-between text-[10px] text-gray-400 font-bold px-2 mt-1 select-none pr-10 flex-none border-t border-gray-50 pt-1">
-          <span>Jan</span>
-          <span>Feb</span>
-          <span>Mar</span>
-          <span>Apr</span>
-          <span>May</span>
-          <span>Jun</span>
-          <span>Jul</span>
-          <span>Aug</span>
-          <span>Sep</span>
-          <span>Oct</span>
-          <span>Nov</span>
-          <span>Dec</span>
+          {points.map((p: any, idx: number) => {
+            const showLabel =
+              points.length <= 12 ||
+              idx === 0 ||
+              idx === points.length - 1 ||
+              idx % Math.ceil(points.length / 6) === 0;
+
+            return (
+              <span
+                key={idx}
+                className={showLabel ? "text-gray-400" : "invisible"}
+              >
+                {p.label}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -283,40 +415,46 @@ export default function AdminDashboard() {
 
           {/* Internal scrollable container for Table */}
           <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
-                  <th className="pb-2 pr-2">Patient</th>
-                  <th className="pb-2 px-2">Doctor</th>
-                  <th className="pb-2 px-2">Time</th>
-                  <th className="pb-2 px-2">Treatment</th>
-                  <th className="pb-2 pl-2 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50/50">
-                {upcomingAppointments.map((app) => (
-                  <tr key={app.id} className="hover:bg-gray-50/30 transition-colors">
-                    <td className="py-2 pr-2 font-bold text-gray-800">{app.patient}</td>
-                    <td className="py-2 px-2 text-gray-500 font-medium">{app.doctor}</td>
-                    <td className="py-2 px-2 text-gray-500 font-semibold">{app.time}</td>
-                    <td className="py-2 px-2 text-gray-500 font-medium">{app.treatment}</td>
-                    <td className="py-2 pl-2 text-right">
-                      <span
-                        className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
-                          app.status === "Confirmed"
-                            ? "bg-green-50 text-green-600"
-                            : app.status === "Completed"
-                            ? "bg-[#008080]/10 text-[#008080]"
-                            : "bg-amber-50 text-amber-600"
-                        }`}
-                      >
-                        {app.status}
-                      </span>
-                    </td>
+            {upcomingAppointments.length > 0 ? (
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
+                    <th className="pb-2 pr-2">Patient</th>
+                    <th className="pb-2 px-2">Doctor</th>
+                    <th className="pb-2 px-2">Time</th>
+                    <th className="pb-2 px-2">Treatment</th>
+                    <th className="pb-2 pl-2 text-right">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50/50">
+                  {upcomingAppointments.map((app: any) => (
+                    <tr key={app.id} className="hover:bg-gray-50/30 transition-colors">
+                      <td className="py-2 pr-2 font-bold text-gray-800">{app.patient}</td>
+                      <td className="py-2 px-2 text-gray-500 font-medium">{app.doctor}</td>
+                      <td className="py-2 px-2 text-gray-500 font-semibold">{app.time}</td>
+                      <td className="py-2 px-2 text-gray-500 font-medium">{app.treatment}</td>
+                      <td className="py-2 pl-2 text-right">
+                        <span
+                          className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                            app.status === "Confirmed"
+                              ? "bg-green-50 text-green-600"
+                              : app.status === "Completed"
+                              ? "bg-[#008080]/10 text-[#008080]"
+                              : "bg-amber-50 text-amber-600"
+                          }`}
+                        >
+                          {app.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 font-semibold py-8 select-none">
+                No appointments booked for today.
+              </div>
+            )}
           </div>
         </div>
 
@@ -337,7 +475,9 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-500 font-semibold leading-none">Active Dentists</p>
-                    <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">5 / 7</p>
+                    <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">
+                      {data?.clinicActivity?.activeDentists ?? 0} / {data?.clinicActivity?.totalDentists ?? 0}
+                    </p>
                   </div>
                 </div>
                 <span className="text-[8px] font-bold text-green-500 uppercase leading-none">On duty</span>
@@ -350,10 +490,18 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-500 font-semibold leading-none">Occupancy Rate</p>
-                    <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">82%</p>
+                    <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">
+                      {data?.clinicActivity?.occupancyRate ?? 0}%
+                    </p>
                   </div>
                 </div>
-                <span className="text-[8px] font-bold text-[#008080] uppercase leading-none">+8% vs wk</span>
+                <span className={`text-[8px] font-bold uppercase leading-none ${
+                  (data?.clinicActivity?.occupancyRateGrowth ?? "").startsWith("-")
+                    ? "text-red-500"
+                    : "text-[#008080]"
+                }`}>
+                  {data?.clinicActivity?.occupancyRateGrowth ?? "0% vs wk"}
+                </span>
               </div>
             </div>
           </div>

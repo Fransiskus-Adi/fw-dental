@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState("clinic");
@@ -38,6 +39,8 @@ export default function AdminSettingsPage() {
   // System variables
   const [slotDuration, setSlotDuration] = useState("60");
   const [maxBookings, setMaxBookings] = useState("15");
+  const [theme, setTheme] = useState("system");
+  const [language, setLanguage] = useState("en");
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,18 +185,19 @@ export default function AdminSettingsPage() {
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-500">Default Appointment Slot Duration</label>
-                      <select
+                    <div className="space-y-1 flex flex-col">
+                      <label className="text-xs font-semibold text-gray-500 mb-1">Default Appointment Slot Duration</label>
+                      <CustomSelect
                         value={slotDuration}
-                        onChange={e => setSlotDuration(e.target.value)}
-                        className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-[#008080]"
-                      >
-                        <option value="30">30 Minutes</option>
-                        <option value="45">45 Minutes</option>
-                        <option value="60">60 Minutes (1 Hour)</option>
-                        <option value="90">90 Minutes</option>
-                      </select>
+                        onChange={setSlotDuration}
+                        options={[
+                          { value: "30", label: "30 Minutes" },
+                          { value: "45", label: "45 Minutes" },
+                          { value: "60", label: "60 Minutes (1 Hour)" },
+                          { value: "90", label: "90 Minutes" }
+                        ]}
+                        triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                      />
                     </div>
 
                     <div className="space-y-1">
@@ -270,27 +274,31 @@ export default function AdminSettingsPage() {
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-500">Dashboard Theme</label>
-                      <select
-                        defaultValue="system"
-                        className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-[#008080]"
-                      >
-                        <option value="light">Light Theme (Default)</option>
-                        <option value="dark">Dark Theme</option>
-                        <option value="system">Follow System Preferences</option>
-                      </select>
+                    <div className="space-y-1 flex flex-col">
+                      <label className="text-xs font-semibold text-gray-500 mb-1">Dashboard Theme</label>
+                      <CustomSelect
+                        value={theme}
+                        onChange={setTheme}
+                        options={[
+                          { value: "light", label: "Light Theme (Default)" },
+                          { value: "dark", label: "Dark Theme" },
+                          { value: "system", label: "Follow System Preferences" }
+                        ]}
+                        triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                      />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-500">Portal Language</label>
-                      <select
-                        defaultValue="en"
-                        className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-[#008080]"
-                      >
-                        <option value="en">English (US)</option>
-                        <option value="id">Indonesian (ID)</option>
-                      </select>
+                    <div className="space-y-1 flex flex-col">
+                      <label className="text-xs font-semibold text-gray-500 mb-1">Portal Language</label>
+                      <CustomSelect
+                        value={language}
+                        onChange={setLanguage}
+                        options={[
+                          { value: "en", label: "English (US)" },
+                          { value: "id", label: "Indonesian (ID)" }
+                        ]}
+                        triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                      />
                     </div>
                   </div>
                 </div>

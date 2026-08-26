@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-type LoginMode = "login" | "forgot" | "otp" | "done";
+type LoginMode = "login" | "forgot" | "otp" | "reset-password" | "done";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -16,6 +16,8 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   
   // Errors or Messages
   const [error, setError] = useState("");
@@ -65,6 +67,7 @@ export default function AdminLoginPage() {
       localStorage.setItem("admin_token", data.access_token);
       localStorage.setItem("admin_token_timestamp", Date.now().toString());
       localStorage.setItem("admin_user", JSON.stringify(data.user));
+      document.cookie = `admin_token=${data.access_token}; path=/; max-age=86400; SameSite=Lax`;
       router.push("/admin/absence");
     } catch (err: any) {
       setError(err.message || "Failed to connect to authentication server.");
@@ -76,7 +79,7 @@ export default function AdminLoginPage() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
-      setError("Please enter your email.");
+      setError("Please enter your email or phone number.");
       return;
     }
 
@@ -101,6 +104,43 @@ export default function AdminLoginPage() {
       setMode("otp");
     } catch (err: any) {
       setError(err.message || "Failed to request password reset.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!email) {
+      setError("Please enter your email or phone number.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("http://localhost:3001/auth/forgot-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to resend OTP.");
+      }
+
+      setOtp("");
+      if (email.includes("@")) {
+        alert("OTP has been resent to your email.");
+      } else {
+        alert("OTP has been resent to your phone number.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to resend OTP.");
     } finally {
       setLoading(false);
     }
@@ -131,9 +171,54 @@ export default function AdminLoginPage() {
         throw new Error(data.message || "Invalid OTP code.");
       }
 
-      setMode("done");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMode("reset-password");
     } catch (err: any) {
       setError(err.message || "Failed to verify OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !confirmPassword) {
+      setError("Please enter all fields.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("http://localhost:3001/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password: newPassword }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to reset password.");
+      }
+
+      setMode("done");
+    } catch (err: any) {
+      setError(err.message || "Failed to reset password.");
     } finally {
       setLoading(false);
     }
@@ -237,7 +322,7 @@ export default function AdminLoginPage() {
           </>
         )}
 
-        {/* STATE 2: Forgot Password - Enter Email */}
+        {/* STATE 2: Forgot Password - Enter Email/Phone */}
         {mode === "forgot" && (
           <>
             <div className="text-center space-y-2 mb-8">
@@ -245,7 +330,7 @@ export default function AdminLoginPage() {
                 Forgot Password
               </h2>
               <p className="text-sm font-medium text-gray-500 px-6">
-                Enter your email address and we will send you a verification code.
+                Enter your email address or phone number and we will send you a verification code.
               </p>
             </div>
 
@@ -258,12 +343,12 @@ export default function AdminLoginPage() {
 
               <div className="space-y-1.5">
                 <label className="text-sm font-bold text-gray-700 block">
-                  Email
+                  Email or Phone Number
                 </label>
                 <Input
-                  type="email"
+                  type="text"
                   required
-                  placeholder="Email address"
+                  placeholder="Email address or phone number"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full h-11 border-gray-200 focus:border-blue-500 rounded-xl px-4 text-gray-800 placeholder:text-gray-400 bg-white"
@@ -360,11 +445,9 @@ export default function AdminLoginPage() {
             <div className="mt-6 text-center flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setOtp("");
-                  alert("OTP has been resent to your email.");
-                }}
-                className="text-xs text-[#008080] font-bold hover:underline cursor-pointer"
+                onClick={handleResendOtp}
+                className="text-xs text-[#008080] font-bold hover:underline cursor-pointer disabled:opacity-50"
+                disabled={loading}
               >
                 Resend Code
               </button>
@@ -383,6 +466,89 @@ export default function AdminLoginPage() {
         )}
 
         {/* STATE 4: Done / Reset Complete */}
+        {mode === "reset-password" && (
+          <>
+            <div className="text-center space-y-2 mb-8">
+              <h2 className="text-2xl font-bold tracking-tight text-gray-900">
+                New Password
+              </h2>
+              <p className="text-sm font-medium text-gray-500 px-6">
+                Please enter and confirm your new password below.
+              </p>
+            </div>
+
+            <form onSubmit={handleResetPassword} className="w-full space-y-5">
+              {error && (
+                <div className="p-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg">
+                  {error}
+                </div>
+              )}
+
+              {/* New Password */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-bold text-gray-700 block">
+                  New Password
+                </label>
+                <Input
+                  type="password"
+                  required
+                  placeholder="New password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full h-11 border-gray-200 focus:border-blue-500 rounded-xl px-4 text-gray-800 placeholder:text-gray-400 bg-white"
+                  disabled={loading}
+                />
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-bold text-gray-700 block">
+                  Confirm Password
+                </label>
+                <Input
+                  type="password"
+                  required
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full h-11 border-gray-200 focus:border-blue-500 rounded-xl px-4 text-gray-800 placeholder:text-gray-400 bg-white"
+                  disabled={loading}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-11 bg-[#008080] hover:bg-[#006666] text-white font-bold rounded-xl transition-all shadow-md shadow-teal-900/10 disabled:opacity-75 flex items-center justify-center gap-2 text-sm cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  "Reset Password"
+                )}
+              </button>
+            </form>
+
+            {/* Back to Login link */}
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => {
+                  setError("");
+                  setMode("login");
+                }}
+                className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-500 hover:text-gray-800 hover:underline cursor-pointer"
+              >
+                <ArrowLeft className="size-4" />
+                Back to Login
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* STATE 5: Done / Reset Complete */}
         {mode === "done" && (
           <>
             <div className="text-center space-y-4 my-4 flex flex-col items-center">
@@ -390,10 +556,10 @@ export default function AdminLoginPage() {
                 <CheckCircle2 className="size-10" />
               </div>
               <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-                Verification Complete
+                Password Reset Complete
               </h2>
               <p className="text-sm font-medium text-gray-500 px-6">
-                Your OTP code was successfully verified. You can now access the portal or reset credentials.
+                Your password has been successfully reset. You can now login with your new password.
               </p>
             </div>
 

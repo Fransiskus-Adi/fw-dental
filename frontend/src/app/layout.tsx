@@ -16,7 +16,7 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   title: "FW Dental",
-  description: "Exceptional Dental Care - With our team of experienced dentists and state-of-the-art technology, we deliver comprehensive treatments in a comfortable and welcoming environment.",
+  description: "A Better Way to Smile - With our team of experienced dentists and state-of-the-art technology, we deliver comprehensive treatments in a comfortable and welcoming environment.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

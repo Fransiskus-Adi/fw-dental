@@ -12,6 +12,9 @@ import { ServicesModule } from './services/services.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { AbsencesModule } from './absences/absences.module';
+import { MailModule } from './mail/mail.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -43,6 +46,9 @@ import { AbsencesModule } from './absences/absences.module';
     BookingsModule,
     TransactionsModule,
     AbsencesModule,
+    MailModule,
+    DashboardModule,
+    WebhooksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

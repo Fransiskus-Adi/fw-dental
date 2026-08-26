@@ -78,7 +78,7 @@ export class Transaction {
   @JoinColumn({ name: 'doctor_id' })
   doctor?: Doctor;
 
-  @ManyToOne(() => Booking, { nullable: true })
+  @ManyToOne(() => Booking, (booking) => booking.transactions, { nullable: true })
   @JoinColumn({ name: 'booking_id' })
   booking?: Booking;
 

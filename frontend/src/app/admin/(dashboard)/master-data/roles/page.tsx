@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface Role {
   code: string;
@@ -522,16 +523,17 @@ export default function RolesPage() {
                     className="h-10 bg-white border-gray-200 text-gray-800 placeholder-gray-400 rounded-xl focus:border-[#008080] focus:ring-[#008080]"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Status</label>
-                  <select
-                    value={enabled}
-                    onChange={e => setEnabled(Number(e.target.value))}
-                    className="w-full h-10 border border-gray-200 bg-white rounded-xl text-sm px-3 text-gray-800 outline-none focus:border-[#008080] focus:ring-1 focus:ring-[#008080]"
-                  >
-                    <option value={1}>Enabled</option>
-                    <option value={0}>Disabled</option>
-                  </select>
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Status</label>
+                  <CustomSelect
+                    value={enabled.toString()}
+                    onChange={(val) => setEnabled(Number(val))}
+                    options={[
+                      { value: "1", label: "Enabled" },
+                      { value: "0", label: "Disabled" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                  />
                 </div>
               </div>
 

@@ -21,6 +21,15 @@ export class AbsencesRepository {
     });
   }
 
+  async findAllWithUsers(): Promise<Absence[]> {
+    return this.repository.find({
+      relations: {
+        user: true,
+      },
+      order: { date: 'DESC', clockIn: 'DESC' },
+    });
+  }
+
   async save(absence: Partial<Absence>): Promise<Absence> {
     const entity = this.repository.create(absence);
     return this.repository.save(entity);

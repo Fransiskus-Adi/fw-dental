@@ -6,6 +6,11 @@ import { Absence } from './absence.entity';
 export class AbsencesController {
   constructor(private readonly absencesService: AbsencesService) {}
 
+  @Get()
+  getAllAbsences(): Promise<Absence[]> {
+    return this.absencesService.getAllAbsences();
+  }
+
   @Get('today/:userId')
   getTodayAbsence(@Param('userId') userId: string): Promise<Absence | null> {
     return this.absencesService.getTodayAbsence(userId);

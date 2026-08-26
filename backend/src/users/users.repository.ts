@@ -18,6 +18,15 @@ export class UsersRepository {
     return this.repository.findOne({ where: { email } });
   }
 
+  async findByEmailOrPhone(emailOrPhone: string): Promise<User | null> {
+    return this.repository.findOne({
+      where: [
+        { email: emailOrPhone },
+        { phone: emailOrPhone },
+      ],
+    });
+  }
+
   async findByEmailWithPassword(email: string): Promise<User | null> {
     return this.repository.findOne({
       where: { email },
@@ -26,6 +35,7 @@ export class UsersRepository {
         name: true,
         email: true,
         password: true,
+        roleCode: true,
         createdAt: true,
       },
     });

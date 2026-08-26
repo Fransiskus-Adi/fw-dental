@@ -5,11 +5,14 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { Booking } from './booking.entity';
 import { Patient } from './patient.entity';
+import { BookingRateLimitGuard } from './guards/booking-rate-limit.guard';
 
 @Controller('bookings')
 export class BookingsController {
@@ -18,6 +21,14 @@ export class BookingsController {
   @Get()
   findAll(): Promise<Booking[]> {
     return this.bookingsService.findAll();
+  }
+
+  @Get('available-slots')
+  async getAvailableSlots(
+    @Query('date') date: string,
+    @Query('serviceId') serviceId: string,
+  ): Promise<string[]> {
+    return this.bookingsService.getAvailableSlots(date, serviceId);
   }
 
   @Get(':id')
@@ -30,6 +41,7 @@ export class BookingsController {
   }
 
   @Post()
+  @UseGuards(BookingRateLimitGuard)
   create(
     @Body()
     data: {
@@ -40,6 +52,7 @@ export class BookingsController {
       date: string;
       time: string;
       patientNotes?: string;
+      website?: string;
     },
   ): Promise<Booking> {
     return this.bookingsService.createBooking(data);

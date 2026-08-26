@@ -37,6 +37,7 @@ export class EmployeesController {
       email: string;
       password?: string;
       phone?: string;
+      roleCode?: string;
     },
   ): Promise<Employee> {
     return this.employeesService.create(
@@ -44,6 +45,7 @@ export class EmployeesController {
       body.email,
       body.password,
       body.phone,
+      body.roleCode,
     );
   }
 
@@ -51,7 +53,13 @@ export class EmployeesController {
   update(
     @Param('id') id: string,
     @Body()
-    body: { name: string; email: string; password?: string; phone?: string },
+    body: {
+      name: string;
+      email: string;
+      password?: string;
+      phone?: string;
+      roleCode?: string;
+    },
   ): Promise<Employee> {
     return this.employeesService.update(
       id,
@@ -59,6 +67,7 @@ export class EmployeesController {
       body.email,
       body.password,
       body.phone,
+      body.roleCode,
     );
   }
 

@@ -16,17 +16,20 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface Employee {
   id: string;
   name: string;
   email: string;
   phone?: string;
+  roleCode?: string;
   createdAt: string;
 }
 
 export default function EmployeesTab() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,10 +42,12 @@ export default function EmployeesTab() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [roleCode, setRoleCode] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
 
   useEffect(() => {
     fetchEmployees();
+    fetchRoles();
   }, []);
 
   const fetchEmployees = async () => {
@@ -60,6 +65,18 @@ export default function EmployeesTab() {
     }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const res = await fetch("http://localhost:3001/roles");
+      if (res.ok) {
+        const data = await res.json();
+        setRoles(data);
+      }
+    } catch (err) {
+      console.error("Failed to load roles", err);
+    }
+  };
+
   const handleOpenAddModal = () => {
     setModalMode("add");
     setSelectedId(null);
@@ -67,6 +84,7 @@ export default function EmployeesTab() {
     setEmail("");
     setPhone("");
     setPassword("");
+    setRoleCode("");
     setIsModalOpen(true);
   };
 
@@ -77,6 +95,7 @@ export default function EmployeesTab() {
     setEmail(emp.email);
     setPhone(emp.phone || "");
     setPassword(""); // Keep blank to not change password
+    setRoleCode(emp.roleCode || "");
     setIsModalOpen(true);
   };
 
@@ -98,6 +117,11 @@ export default function EmployeesTab() {
       const payload: any = { name, email, phone };
       if (password) {
         payload.password = password;
+      }
+      if (roleCode) {
+        payload.roleCode = roleCode;
+      } else {
+        payload.roleCode = null;
       }
 
       const res = await fetch(url, {
@@ -194,7 +218,14 @@ export default function EmployeesTab() {
                     </div>
                     <div>
                       <h4 className="font-bold text-gray-800 text-base">{emp.name}</h4>
-                      <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mt-0.5">Staff / Employee</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Staff</p>
+                        {emp.roleCode && (
+                          <code className="text-[8px] text-[#008080] font-mono font-bold bg-[#008080]/10 px-1.5 py-0.5 rounded">
+                            {emp.roleCode}
+                          </code>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
@@ -296,6 +327,20 @@ export default function EmployeesTab() {
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   className="h-10 border-gray-200 rounded-xl focus:border-blue-500"
+                />
+              </div>
+
+              {/* Role Assignment */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Role Assignment</label>
+                <CustomSelect
+                  value={roleCode}
+                  onChange={(val) => setRoleCode(val)}
+                  options={[
+                    { value: "", label: "No Role / Default Access" },
+                    ...roles.map(r => ({ value: r.code, label: `${r.name} (${r.code})` }))
+                  ]}
+                  triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
                 />
               </div>
 

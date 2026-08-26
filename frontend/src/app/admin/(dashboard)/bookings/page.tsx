@@ -13,14 +13,16 @@ import {
   AlertCircle,
   Filter,
   Check,
-  X
+  X,
+  CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface Booking {
-  id: string | number;
+  id: string;
   patientName: string;
   phone: string;
   doctorName: string;
@@ -28,6 +30,12 @@ interface Booking {
   time: string;
   treatment: string;
   status: "Pending" | "Confirmed" | "Completed" | "Cancelled";
+  sourceCode: string;
+  hasTransaction: boolean;
+  patientId: string;
+  doctorId: string;
+  serviceId: string;
+  servicePrice: number;
 }
 
 export default function AdminBookingsPage() {
@@ -54,6 +62,12 @@ export default function AdminBookingsPage() {
     time: b.startTime,
     treatment: b.service ? b.service.name : "Unknown",
     status: b.statusCode ? (b.statusCode.charAt(0) + b.statusCode.slice(1).toLowerCase()) as any : "Pending",
+    sourceCode: b.sourceCode || "WEBSITE",
+    hasTransaction: b.transactions ? b.transactions.some((tx: any) => tx.deleted === 0) : false,
+    patientId: b.patientId,
+    doctorId: b.doctorId,
+    serviceId: b.serviceId,
+    servicePrice: b.service ? Number(b.service.priceFrom) || 0 : 0,
   });
 
   const fetchBookings = () => {
@@ -81,6 +95,93 @@ export default function AdminBookingsPage() {
       })
       .catch(err => console.error("Error loading services:", err));
   }, []);
+
+  // Checkout Modal State
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutBooking, setCheckoutBooking] = useState<Booking | null>(null);
+  const [checkoutPrice, setCheckoutPrice] = useState<number>(0);
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState("CASH");
+  const [checkoutPaymentStatus, setCheckoutPaymentStatus] = useState("PAID");
+  const [checkoutDiscount, setCheckoutDiscount] = useState<number>(0);
+  const [checkoutNotes, setCheckoutNotes] = useState("");
+  const [submittingCheckout, setSubmittingCheckout] = useState(false);
+
+  const handleOpenCheckout = (booking: Booking) => {
+    setCheckoutBooking(booking);
+    setCheckoutPrice(booking.servicePrice);
+    setCheckoutPaymentMethod("CASH");
+    setCheckoutPaymentStatus("PAID");
+    setCheckoutDiscount(0);
+    setCheckoutNotes("");
+    setIsCheckoutOpen(true);
+  };
+
+  const handleCheckoutSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkoutBooking) return;
+    setSubmittingCheckout(true);
+
+    try {
+      const itemPrice = Number(checkoutPrice) || 0;
+      const discountVal = Number(checkoutDiscount) || 0;
+      const netAmount = Math.max(0, itemPrice - discountVal);
+      const taxVal = Math.round(netAmount * 0.11);
+
+      const transactionPayload = {
+        patientId: checkoutBooking.patientId,
+        bookingId: checkoutBooking.id,
+        doctorId: checkoutBooking.doctorId || undefined,
+        discount: discountVal,
+        tax: taxVal,
+        paymentMethod: checkoutPaymentMethod,
+        paymentStatus: checkoutPaymentStatus,
+        transactionDate: new Date().toISOString().split("T")[0],
+        notes: checkoutNotes || undefined,
+        items: [
+          {
+            serviceId: checkoutBooking.serviceId,
+            name: checkoutBooking.treatment,
+            price: itemPrice,
+            quantity: 1,
+          },
+        ],
+      };
+
+      const txRes = await fetch("http://localhost:3001/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(transactionPayload),
+      });
+
+      if (!txRes.ok) {
+        const errData = await txRes.json();
+        throw new Error(errData.message || "Failed to create transaction");
+      }
+
+      const statusRes = await fetch(`http://localhost:3001/bookings/${checkoutBooking.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
+
+      if (!statusRes.ok) {
+        const errData = await statusRes.json();
+        throw new Error(errData.message || "Failed to update booking status");
+      }
+
+      alert("Transaction created and booking completed successfully!");
+      setIsCheckoutOpen(false);
+      fetchBookings();
+    } catch (err: any) {
+      alert(err.message || "Error during checkout");
+    } finally {
+      setSubmittingCheckout(false);
+    }
+  };
 
   // Booking status changes
   const updateStatus = async (id: string | number, status: Booking["status"]) => {
@@ -292,13 +393,23 @@ export default function AdminBookingsPage() {
                           )}
                           {b.status === "Confirmed" && (
                             <>
-                              <button
-                                onClick={() => updateStatus(b.id, "Completed")}
-                                className="size-8 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg flex items-center justify-center transition-all cursor-pointer"
-                                title="Mark Completed"
-                              >
-                                <CheckCircle className="size-4" />
-                              </button>
+                              {b.sourceCode === "WEBSITE" && !b.hasTransaction ? (
+                                <button
+                                  onClick={() => handleOpenCheckout(b)}
+                                  className="size-8 bg-teal-50 hover:bg-teal-100 text-teal-650 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                                  title="Checkout & Create Transaction"
+                                >
+                                  <CreditCard className="size-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => updateStatus(b.id, "Completed")}
+                                  className="size-8 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                                  title="Mark Completed"
+                                >
+                                  <CheckCircle className="size-4" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => updateStatus(b.id, "Cancelled")}
                                 className="size-8 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg flex items-center justify-center transition-all cursor-pointer"
@@ -376,17 +487,14 @@ export default function AdminBookingsPage() {
                     className="h-10 border-gray-200 rounded-xl bg-gray-50 text-gray-500 select-none"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">Treatment</label>
-                  <select
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Treatment</label>
+                  <CustomSelect
                     value={newTreatment}
-                    onChange={e => setNewTreatment(e.target.value)}
-                    className="w-full h-10 border border-gray-200 rounded-xl text-sm px-3 bg-transparent outline-none focus:border-[#008080]"
-                  >
-                    {services.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    onChange={setNewTreatment}
+                    options={services.map(s => ({ value: s.id, label: s.name }))}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-sm font-medium text-gray-700"
+                  />
                 </div>
               </div>
 
@@ -426,6 +534,190 @@ export default function AdminBookingsPage() {
                   className="h-10 px-5 rounded-xl bg-[#008080] hover:bg-[#006666] text-white text-sm font-semibold transition-all shadow-md shadow-teal-100 cursor-pointer"
                 >
                   Schedule Appointment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout & Complete Booking Modal Backdrop */}
+      {isCheckoutOpen && checkoutBooking && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          {/* Modal Container */}
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-800">Checkout & Create Transaction</h3>
+              <button
+                onClick={() => setIsCheckoutOpen(false)}
+                className="text-gray-400 hover:text-gray-600 size-8 rounded-lg hover:bg-gray-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCheckoutSubmit} className="p-6 space-y-4">
+              <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-2 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-gray-400 font-semibold block">Patient Name</span>
+                    <span className="font-bold text-gray-700">{checkoutBooking.patientName}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 font-semibold block">Phone Number</span>
+                    <span className="font-bold text-gray-700">{checkoutBooking.phone}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 font-semibold block">Dentist Assignment</span>
+                    <span className="font-bold text-gray-700">{checkoutBooking.doctorName}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 font-semibold block">Treatment</span>
+                    <span className="font-bold text-gray-700">{checkoutBooking.treatment}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Payment Method</label>
+                  <CustomSelect
+                    value={checkoutPaymentMethod}
+                    onChange={setCheckoutPaymentMethod}
+                    options={[
+                      { value: "CASH", label: "CASH" },
+                      { value: "DEBIT_CARD", label: "DEBIT CARD" },
+                      { value: "CREDIT_CARD", label: "CREDIT CARD" },
+                      { value: "QRIS", label: "QRIS / SCAN MOCK" },
+                      { value: "BANK_TRANSFER", label: "BANK TRANSFER" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-xs font-medium text-gray-700"
+                  />
+                </div>
+
+                <div className="space-y-1 flex flex-col">
+                  <label className="text-xs font-semibold text-gray-500 mb-1">Payment Status</label>
+                  <CustomSelect
+                    value={checkoutPaymentStatus}
+                    onChange={setCheckoutPaymentStatus}
+                    options={[
+                      { value: "PAID", label: "PAID" },
+                      { value: "UNPAID", label: "UNPAID (Pending Ledger)" }
+                    ]}
+                    triggerClassName="w-full h-10 border-gray-200 rounded-xl text-xs font-medium text-gray-700"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500">Price (IDR)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={checkoutPrice}
+                    onChange={(e) =>
+                      setCheckoutPrice(Math.max(0, parseFloat(e.target.value) || 0))
+                    }
+                    className="h-10 border-gray-200 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500">Discount (Rp)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={checkoutDiscount}
+                    onChange={(e) =>
+                      setCheckoutDiscount(Math.max(0, parseFloat(e.target.value) || 0))
+                    }
+                    className="h-10 border-gray-200 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Internal Notes</label>
+                <textarea
+                  placeholder="e.g. Patient paid via QRIS. Happy with the service."
+                  rows={2}
+                  value={checkoutNotes}
+                  onChange={(e) => setCheckoutNotes(e.target.value)}
+                  className="w-full p-3 border border-gray-200 rounded-xl text-xs bg-white outline-none focus:border-[#008080]"
+                />
+              </div>
+
+              {/* Totals Summary */}
+              <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span>Subtotal</span>
+                  <span className="font-bold">
+                    {new Intl.NumberFormat("id-ID", {
+                      style: "currency",
+                      currency: "IDR",
+                      maximumFractionDigits: 0,
+                    }).format(checkoutPrice)}
+                  </span>
+                </div>
+                {checkoutDiscount > 0 && (
+                  <div className="flex items-center justify-between text-red-500">
+                    <span>Discount</span>
+                    <span className="font-bold">
+                      -
+                      {new Intl.NumberFormat("id-ID", {
+                        style: "currency",
+                        currency: "IDR",
+                        maximumFractionDigits: 0,
+                      }).format(checkoutDiscount)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-gray-500">
+                  <span>Tax (11%)</span>
+                  <span className="font-bold">
+                    {new Intl.NumberFormat("id-ID", {
+                      style: "currency",
+                      currency: "IDR",
+                      maximumFractionDigits: 0,
+                    }).format(
+                      Math.round(Math.max(0, checkoutPrice - checkoutDiscount) * 0.11),
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-2 font-bold text-gray-800">
+                  <span>Grand Total</span>
+                  <span className="text-[#008080] font-extrabold text-sm">
+                    {new Intl.NumberFormat("id-ID", {
+                      style: "currency",
+                      currency: "IDR",
+                      maximumFractionDigits: 0,
+                    }).format(
+                      Math.max(0, checkoutPrice - checkoutDiscount) +
+                        Math.round(
+                          Math.max(0, checkoutPrice - checkoutDiscount) * 0.11,
+                        ),
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-gray-100 mt-6 font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setIsCheckoutOpen(false)}
+                  className="h-10 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-500 text-sm font-semibold cursor-pointer"
+                  disabled={submittingCheckout}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="h-10 px-5 rounded-xl bg-[#008080] hover:bg-[#006666] text-white text-sm font-semibold transition-all shadow-md shadow-teal-100 cursor-pointer flex items-center gap-2"
+                  disabled={submittingCheckout}
+                >
+                  {submittingCheckout ? "Processing..." : "Complete & Pay"}
                 </button>
               </div>
             </form>

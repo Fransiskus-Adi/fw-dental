@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from '../users/user.entity';
 
 @Entity('absences')
 export class Absence {
@@ -13,6 +16,10 @@ export class Absence {
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
+
+  @ManyToOne(() => User, { eager: false })
+  @JoinColumn({ name: 'user_id' })
+  user: User;
 
   @Column({ type: 'date' })
   date: string; // YYYY-MM-DD

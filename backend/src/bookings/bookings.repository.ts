@@ -17,6 +17,7 @@ export class BookingsRepository {
         patient: true,
         doctor: true,
         service: true,
+        transactions: true,
       },
     });
   }
@@ -27,6 +28,7 @@ export class BookingsRepository {
         patient: true,
         doctor: true,
         service: true,
+        transactions: true,
       },
       order: { createdAt: 'DESC' },
     });

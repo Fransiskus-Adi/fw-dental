@@ -20,6 +20,9 @@ import {
   X,
   LocateFixed,
   ShieldAlert,
+  RefreshCw,
+  Users,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +48,14 @@ export default function AdminAbsencePage() {
   const [todayAbsence, setTodayAbsence] = useState<Absence | null>(null);
   const [history, setHistory] = useState<Absence[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Admin specific states
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"my" | "employee">("my");
+  const [allLogs, setAllLogs] = useState<any[]>([]);
+  const [allLogsLoading, setAllLogsLoading] = useState<boolean>(false);
+  const [logsSearchTerm, setLogsSearchTerm] = useState<string>("");
+  const [logsDateFilter, setLogsDateFilter] = useState<string>("");
 
   // Form states
   const [location, setLocation] = useState<string>("");
@@ -84,6 +95,7 @@ export default function AdminAbsencePage() {
       if (userStr) {
         const u = JSON.parse(userStr);
         setUserName(u.name || "User");
+        setUserEmail(u.email || "");
       }
     } catch (e) {
       console.error("Error retrieving user info", e);
@@ -118,6 +130,26 @@ export default function AdminAbsencePage() {
       fetchData(userId);
     }
   }, [userId]);
+
+  const fetchAllLogs = async () => {
+    setAllLogsLoading(true);
+    try {
+      const res = await fetch("http://localhost:3001/absences");
+      if (!res.ok) throw new Error("Failed to fetch employee logs");
+      const data = await res.json();
+      setAllLogs(data);
+    } catch (err: any) {
+      console.error("Error fetching all logs:", err);
+    } finally {
+      setAllLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userEmail === "admin@fwdental.com" && activeTab === "employee") {
+      fetchAllLogs();
+    }
+  }, [userEmail, activeTab]);
 
   const handleClockIn = async (loc: string) => {
     if (!userId) return;
@@ -432,6 +464,18 @@ export default function AdminAbsencePage() {
   const fillMockGps = () => {
     setLocation(`FW Dental HQ Office (lat: -6.2088, lng: 106.8456)`);
   };
+
+  // Filtered employee logs for admin view
+  const filteredLogs = allLogs.filter((log) => {
+    const userNameMatch = log.user?.name
+      ? log.user.name.toLowerCase().includes(logsSearchTerm.toLowerCase())
+      : false;
+    const userEmailMatch = log.user?.email
+      ? log.user.email.toLowerCase().includes(logsSearchTerm.toLowerCase())
+      : false;
+    const dateMatch = logsDateFilter ? log.date === logsDateFilter : true;
+    return (userNameMatch || userEmailMatch) && dateMatch;
+  });
 
   const todayDateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const liveTimeStr = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -883,62 +927,194 @@ export default function AdminAbsencePage() {
 
           {/* Section Header */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 flex-none">
-            <h4 className="text-gray-800 font-bold text-sm flex items-center gap-1.5">
-              <History className="size-4.5 text-[#008080]" />
-              Attendance History
-            </h4>
+            {userEmail === "admin@fwdental.com" ? (
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setActiveTab("my")}
+                  className={`pb-1 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                    activeTab === "my"
+                      ? "border-[#008080] text-[#008080]"
+                      : "border-transparent text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  My Attendance
+                </button>
+                <button
+                  onClick={() => setActiveTab("employee")}
+                  className={`pb-1 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === "employee"
+                      ? "border-[#008080] text-[#008080]"
+                      : "border-transparent text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  <Users className="size-3.5" />
+                  Employee Logs
+                </button>
+              </div>
+            ) : (
+              <h4 className="text-gray-800 font-bold text-sm flex items-center gap-1.5">
+                <History className="size-4.5 text-[#008080]" />
+                Attendance History
+              </h4>
+            )}
             <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded-md">
-              {history.length} Records
+              {activeTab === "my" ? `${history.length} Records` : `${filteredLogs.length} Records`}
             </span>
           </div>
 
-          {/* Scrollable Table */}
-          <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-            {history.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-12 text-center">
-                <div className="size-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                  <History className="size-5 text-gray-300" />
+          {/* Tab 1: My History */}
+          {activeTab === "my" && (
+            <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+              {history.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-12 text-center">
+                  <div className="size-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                    <History className="size-5 text-gray-300" />
+                  </div>
+                  <p className="text-xs font-bold text-gray-400">No attendance logs found</p>
+                  <p className="text-[10px] text-gray-350 font-medium mt-1">Records will appear here after you clock in.</p>
                 </div>
-                <p className="text-xs font-bold text-gray-400">No attendance logs found</p>
-                <p className="text-[10px] text-gray-300 font-medium mt-1">Records will appear here after you clock in.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
-                    <th className="pb-2 pr-2">Date</th>
-                    <th className="pb-2 px-2">Clock In</th>
-                    <th className="pb-2 px-2">Clock Out</th>
-                    <th className="pb-2 px-2">Location</th>
-                    <th className="pb-2 pl-2 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50/50">
-                  {history.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-50/30 transition-colors">
-                      <td className="py-2.5 pr-2 font-bold text-gray-800 whitespace-nowrap">
-                        {formatDate(row.date)}
-                      </td>
-                      <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
-                        {formatTime(row.clockIn)}
-                      </td>
-                      <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
-                        {formatTime(row.clockOut)}
-                      </td>
-                      <td className="py-2.5 px-2">
-                        <span className="text-[10px] text-gray-400 font-medium truncate max-w-[180px] block" title={row.clockInLocation || ""}>
-                          {row.clockInLocation || "-"}
-                        </span>
-                      </td>
-                      <td className="py-2.5 pl-2 text-right whitespace-nowrap">
-                        {getStatusBadge(row.status)}
-                      </td>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
+                      <th className="pb-2 pr-2">Date</th>
+                      <th className="pb-2 px-2">Clock In</th>
+                      <th className="pb-2 px-2">Clock Out</th>
+                      <th className="pb-2 px-2">Location</th>
+                      <th className="pb-2 pl-2 text-right">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50/50">
+                    {history.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50/30 transition-colors">
+                        <td className="py-2.5 pr-2 font-bold text-gray-800 whitespace-nowrap">
+                          {formatDate(row.date)}
+                        </td>
+                        <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
+                          {formatTime(row.clockIn)}
+                        </td>
+                        <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
+                          {formatTime(row.clockOut)}
+                        </td>
+                        <td className="py-2.5 px-2">
+                          <span className="text-[10px] text-gray-400 font-medium truncate max-w-[180px] block" title={row.clockInLocation || ""}>
+                            {row.clockInLocation || "-"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pl-2 text-right whitespace-nowrap">
+                          {getStatusBadge(row.status)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Employee History */}
+          {activeTab === "employee" && (
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Filter bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pb-2.5 mb-2.5 border-b border-gray-100/80 flex-none">
+                <div className="relative w-full max-w-xs shrink-0">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search employee by name/email..."
+                    value={logsSearchTerm}
+                    onChange={(e) => setLogsSearchTerm(e.target.value)}
+                    className="w-full h-8 pl-8 pr-3 text-[11px] border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-[#008080] focus:ring-1 focus:ring-[#008080]/10 outline-none transition-all placeholder:text-gray-400"
+                  />
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <input
+                    type="date"
+                    value={logsDateFilter}
+                    onChange={(e) => setLogsDateFilter(e.target.value)}
+                    className="h-8 px-2 text-[11px] border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-[#008080] outline-none transition-all text-gray-600 font-medium"
+                  />
+                  {logsDateFilter && (
+                    <button
+                      onClick={() => setLogsDateFilter("")}
+                      className="h-8 px-2.5 text-[10px] font-bold text-gray-400 hover:text-gray-650 transition-colors border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    onClick={fetchAllLogs}
+                    disabled={allLogsLoading}
+                    className="size-8 flex items-center justify-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-50 cursor-pointer"
+                    title="Refresh Logs"
+                  >
+                    <RefreshCw className={`size-3.5 ${allLogsLoading ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable logs table */}
+              <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+                {allLogsLoading ? (
+                  <div className="h-full flex items-center justify-center py-12">
+                    <Loader2 className="size-6 text-[#008080] animate-spin" />
+                  </div>
+                ) : filteredLogs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center py-12 text-center">
+                    <div className="size-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                      <Users className="size-5 text-gray-300" />
+                    </div>
+                    <p className="text-xs font-bold text-gray-400">No logs found</p>
+                    <p className="text-[10px] text-gray-350 font-medium mt-1">Try adjusting your filters or search query.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white z-10">
+                        <th className="pb-2 pr-2">Date</th>
+                        <th className="pb-2 px-2">Employee</th>
+                        <th className="pb-2 px-2">Clock In</th>
+                        <th className="pb-2 px-2">Clock Out</th>
+                        <th className="pb-2 pl-2 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50/50">
+                      {filteredLogs.map((row) => (
+                        <tr key={row.id} className="hover:bg-gray-50/30 transition-colors">
+                          <td className="py-2 pr-2 font-bold text-gray-800 whitespace-nowrap">
+                            {formatDate(row.date)}
+                          </td>
+                          <td className="py-2 px-2 whitespace-nowrap">
+                            <div className="font-bold text-gray-800 leading-tight">{row.user?.name || "Unknown User"}</div>
+                            <div className="text-[9px] text-gray-400 font-medium leading-none mt-0.5">{row.user?.email || "-"}</div>
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="font-bold text-gray-700 tabular-nums">{formatTime(row.clockIn)}</div>
+                            {row.clockInLocation && (
+                              <div className="text-[9px] text-gray-400 font-medium max-w-[150px] truncate" title={row.clockInLocation}>
+                                {row.clockInLocation}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="font-bold text-gray-700 tabular-nums">{formatTime(row.clockOut)}</div>
+                            {row.clockOutLocation && (
+                              <div className="text-[9px] text-gray-400 font-medium max-w-[150px] truncate" title={row.clockOutLocation}>
+                                {row.clockOutLocation}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 pl-2 text-right whitespace-nowrap align-middle">
+                            {getStatusBadge(row.status)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

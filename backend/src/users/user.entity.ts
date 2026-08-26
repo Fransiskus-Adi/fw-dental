@@ -22,6 +22,9 @@ export class User {
   @Column({ nullable: true })
   phone?: string;
 
+  @Column({ name: 'role_code', nullable: true })
+  roleCode?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

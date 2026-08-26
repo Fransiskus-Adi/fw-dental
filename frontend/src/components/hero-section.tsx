@@ -27,20 +27,20 @@ export default function HeroSection() {
                   className="block text-[clamp(3.5rem,8vw,8rem)] font-medium text-black"
                   style={{ fontFamily: "var(--font-playfair)" }}
                 >
-                  Exceptional
+                  A Better Way
                 </span>
                 <span className="block text-[clamp(3.5rem,8vw,8rem)] font-medium">
                   <span
                     className="text-teal-600"
                     style={{ fontFamily: "var(--font-playfair)" }}
                   >
-                    Dental
+                    to
                   </span>{" "}
                   <span
                     className="text-black"
                     style={{ fontFamily: "var(--font-playfair)" }}
                   >
-                    Care
+                    Smile
                   </span>
                 </span>
               </h1>
@@ -54,15 +54,13 @@ export default function HeroSection() {
               <p className="text-sm font-semibold text-black mt-2">
                 \\ We&apos;re Open Clinic
               </p>
-              <p className="text-sm text-gray-500">8 AM - 3 PM</p>
+              <p className="text-sm text-gray-500">8 AM - 8 PM</p>
             </div>
           </div>
 
           {/* Description text */}
           <p className="max-w-sm text-gray-600 text-base leading-relaxed mt-8 lg:mt-10">
-            With our team of experienced dentists and state-of-the-art
-            technology, we deliver comprehensive treatments in a comfortable and
-            welcoming environment.
+            We are committed to delivering high-quality dental care while prioritizing patient comfort and satisfaction. Our experienced dental team provides personalized treatments using modern technology and advanced techniques.
           </p>
 
           {/* Book Now button */}

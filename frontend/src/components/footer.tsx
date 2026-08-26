@@ -15,10 +15,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-sm text-gray-600 leading-relaxed">
-              We are dedicated to providing exceptional dental care with a focus
-              on patient comfort and satisfaction. Our experienced team of
-              dentists is committed to delivering personalized treatments using
-              advanced technology and techniques.
+              We are committed to delivering high-quality dental care while prioritizing patient comfort and satisfaction. Our experienced dental team provides personalized treatments using modern technology and advanced techniques.
             </p>
           </div>
 
@@ -35,7 +32,7 @@ export default function Footer() {
                 EMAIL
               </p>
               <p className="text-sm font-medium text-black">
-                info@dentalhappy.co
+                fwdentalclinic@gmail.com
               </p>
             </div>
           </div>
@@ -53,19 +50,16 @@ export default function Footer() {
             </p>
             <div className="space-y-1.5 text-sm text-gray-700">
               <p>
-                <span className="font-medium">Monday - Friday:</span> 8:00 AM -
-                3:00 PM
+                <span className="font-medium">Monday - Friday:</span> 08:00 -
+                20:00
               </p>
               <p>
-                <span className="font-medium">Saturday:</span> 8:00 AM - 1:00
-                PM
-              </p>
-              <p>
-                <span className="font-medium">Sunday:</span> Closed
+                <span className="font-medium">Saturday - Sunday:</span> 10:00 -
+                20:00
               </p>
             </div>
             <p className="text-xs text-gray-400 mt-6">
-              Copyright © 2023 FW Dental. All rights reserved.
+              Copyright © 2026 FW Dental. All rights reserved.
             </p>
           </div>
 
@@ -85,12 +79,7 @@ export default function Footer() {
               >
                 OUR SERVICES
               </Link>
-              <Link
-                href="#clinics"
-                className="block text-sm font-medium text-gray-700 hover:text-black transition-colors uppercase tracking-wide"
-              >
-                OUR CLINICS
-              </Link>
+
               <Link
                 href="#clinics"
                 className="block text-sm font-medium text-gray-700 hover:text-black transition-colors uppercase tracking-wide"
@@ -135,18 +124,7 @@ export default function Footer() {
               >
                 INSTAGRAM
               </Link>
-              <Link
-                href="#"
-                className="block text-sm font-medium text-gray-700 hover:text-black transition-colors uppercase tracking-wide"
-              >
-                TWITTER
-              </Link>
-              <Link
-                href="#"
-                className="block text-sm font-medium text-gray-700 hover:text-black transition-colors uppercase tracking-wide"
-              >
-                THREADS
-              </Link>
+
               <Link
                 href="#"
                 className="block text-sm font-medium text-gray-700 hover:text-black transition-colors uppercase tracking-wide"
