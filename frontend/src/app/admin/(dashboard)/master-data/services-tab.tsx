@@ -5,7 +5,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 import { useAdminAccess } from "@/lib/admin-access-context";
 import { staffFetch } from "@/lib/staff-fetch";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -53,24 +53,21 @@ export default function ServicesTab() {
   const [displayOrder, setDisplayOrder] = useState(0);
   const [submitLoading, setSubmitLoading] = useState(false);
 
-  useEffect(() => {
-    fetchServices();
+  const fetchServices = useCallback(() => {
+    return staffFetch("/services/staff")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load services");
+        setServices(await res.json());
+      })
+      .catch((err) => {
+        setError((err instanceof Error && err.message) || "An error occurred while loading services");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchServices = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await staffFetch("/services/staff");
-      if (!res.ok) throw new Error("Failed to load services");
-      const data = await res.json();
-      setServices(data);
-    } catch (err: any) {
-      setError(err.message || "An error occurred while loading services");
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    void fetchServices();
+  }, [fetchServices]);
 
   const handleOpenAddModal = () => {
     setModalMode("add");
@@ -108,18 +105,17 @@ export default function ServicesTab() {
 
     setSubmitLoading(true);
     try {
-      const payload: any = {
+      const payload = {
         name,
         durationMinutes: Number(durationMinutes),
         displayOrder: Number(displayOrder),
         shortDescription,
         description,
+        ...(code.trim() ? { code } : {}),
+        ...(slug.trim() ? { slug } : {}),
+        ...(priceFrom ? { priceFrom: Number(priceFrom) } : {}),
+        ...(priceTo ? { priceTo: Number(priceTo) } : {}),
       };
-
-      if (code.trim()) payload.code = code;
-      if (slug.trim()) payload.slug = slug;
-      if (priceFrom) payload.priceFrom = Number(priceFrom);
-      if (priceTo) payload.priceTo = Number(priceTo);
 
       const url = modalMode === "add" 
         ? "/services"
@@ -138,9 +134,11 @@ export default function ServicesTab() {
       }
 
       setIsModalOpen(false);
-      fetchServices();
-    } catch (err: any) {
-      alert(err.message || "Failed to save service");
+      setLoading(true);
+      setError("");
+      void fetchServices();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to save service");
     } finally {
       setSubmitLoading(false);
     }
@@ -155,9 +153,11 @@ export default function ServicesTab() {
       });
 
       if (!res.ok) throw new Error("Failed to delete service");
-      fetchServices();
-    } catch (err: any) {
-      alert(err.message || "Failed to delete service");
+      setLoading(true);
+      setError("");
+      void fetchServices();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to delete service");
     }
   };
 

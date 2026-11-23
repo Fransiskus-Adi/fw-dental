@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { adminLandingPage } from "@/lib/admin-access";
 import type { AdminSession } from "@/lib/admin-access";
 import { staffFetch } from "@/lib/staff-fetch";
@@ -33,6 +34,7 @@ export default function AdminLoginPage() {
     if (token && /^[A-Za-z0-9_-]{43}$/.test(token)) {
       resetLinkOpened.current = true;
       window.history.replaceState(null, "", window.location.pathname);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Read the client-only fragment before removing it from the URL.
       setResetToken(token);
       setMode("reset-password");
       return;
@@ -180,8 +182,10 @@ export default function AdminLoginPage() {
         
         {/* Logo */}
         <div className="mb-6 flex justify-center">
-          <img
+          <Image
             src="/fw-dental-logo.png"
+            width={56}
+            height={56}
             alt="FW Dental Logo"
             className="h-16 w-auto object-contain"
           />

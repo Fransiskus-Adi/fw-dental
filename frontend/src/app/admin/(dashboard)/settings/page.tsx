@@ -12,7 +12,6 @@ import {
   Phone,
   MapPin
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -31,21 +30,21 @@ export default function AdminSettingsPage() {
   const [clinicAddress, setClinicAddress] = useState("Jl. Jenderal Sudirman No. 45, Jakarta, Indonesia");
   
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setLoadError("");
-    try {
-      const response = await staffFetch("/settings", { signal });
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      if (signal?.aborted) return;
-      setClinicName((value) => data.clinicName ?? value);
-      setClinicPhone((value) => data.clinicPhone ?? value);
-      setClinicEmail((value) => data.clinicEmail ?? value);
-      setClinicAddress((value) => data.clinicAddress ?? value);
-      setReady(true);
-    } catch {
-      if (!signal?.aborted) setLoadError("Could not load clinic settings.");
-    }
+  const load = useCallback((signal?: AbortSignal) => {
+    return staffFetch("/settings", { signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (signal?.aborted) return;
+        setClinicName((value) => data.clinicName ?? value);
+        setClinicPhone((value) => data.clinicPhone ?? value);
+        setClinicEmail((value) => data.clinicEmail ?? value);
+        setClinicAddress((value) => data.clinicAddress ?? value);
+        setReady(true);
+      })
+      .catch(() => {
+        if (!signal?.aborted) setLoadError("Could not load clinic settings.");
+      });
   }, []);
 
   useEffect(() => {
@@ -87,7 +86,21 @@ export default function AdminSettingsPage() {
 
       <Card className="bg-white border-none shadow-sm rounded-3xl p-6">
           <CardContent className="p-0">
-            {loadError && <p role="alert" className="mb-4 text-sm text-red-800">{loadError} <button type="button" className="font-semibold underline" onClick={() => void load()}>Retry</button></p>}
+            {loadError && (
+              <p role="alert" className="mb-4 text-sm text-red-800">
+                {loadError}{" "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => {
+                    setLoadError("");
+                    void load();
+                  }}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
             {!ready && !loadError && <p role="status" className="mb-4 text-sm text-gray-600">Loading settings…</p>}
             {saveError && <p role="alert" className="mb-4 text-sm text-red-800">{saveError}</p>}
             <form onSubmit={handleSave} onChange={() => setSuccessMsg("")}>

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export default function Footer() {
@@ -9,7 +10,7 @@ export default function Footer() {
           {/* Logo + Description */}
           <div className="max-w-md">
             <Link href="/" className="flex items-center gap-2 mb-4">
-              <img src="/fw-dental-logo.png" alt="FW Dental" className="h-6 w-auto" />
+              <Image src="/fw-dental-logo.png" width={24} height={24} alt="FW Dental" className="h-6 w-auto" />
               <span className="text-lg font-bold tracking-tight text-black">
                 FW Dental
               </span>

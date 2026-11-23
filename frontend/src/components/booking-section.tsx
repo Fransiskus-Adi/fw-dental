@@ -15,7 +15,7 @@ export default function BookingSection() {
     time: "",
   });
   const [honeypot, setHoneypot] = useState("");
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
@@ -28,7 +28,6 @@ export default function BookingSection() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setServiceError(false);
     fetch("/api/clinic/services", { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load services");
@@ -41,16 +40,9 @@ export default function BookingSection() {
 
   // Fetch slots based on date/service change
   useEffect(() => {
-    if (!formData.date || !formData.serviceId) {
-      setAvailableSlots([]);
-      setLoadingSlots(false);
-      return;
-    }
+    if (!formData.date || !formData.serviceId) return;
 
     const controller = new AbortController();
-    setSlotError(false);
-    setLoadingSlots(true);
-    setAvailableSlots([]);
     const query = new URLSearchParams({ date: formData.date, serviceId: formData.serviceId });
     fetch(
       `/api/clinic/bookings/available-slots?${query}`, { signal: controller.signal, cache: "no-store" },
@@ -86,7 +78,7 @@ export default function BookingSection() {
       "Dec",
     ];
 
-    let current = new Date();
+    const current = new Date();
     for (let i = 0; list.length < 14 && i < 30; i++) {
       const dayOfWeek = current.getDay();
       if (dayOfWeek !== 0) {
@@ -100,18 +92,30 @@ export default function BookingSection() {
     return list;
   };
 
+  const resetSlots = (loading: boolean) => {
+    setSlotError(false);
+    setLoadingSlots(loading);
+    setAvailableSlots([]);
+  };
+
   const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const serviceId = e.target.value;
+    if (serviceId === formData.serviceId) return;
+    resetSlots(Boolean(formData.date && serviceId));
     setFormData((prev) => ({
       ...prev,
-      serviceId: e.target.value,
+      serviceId,
       time: "", // Reset time
     }));
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const date = e.target.value;
+    if (date === formData.date) return;
+    resetSlots(Boolean(date && formData.serviceId));
     setFormData((prev) => ({
       ...prev,
-      date: e.target.value,
+      date,
       time: "", // Reset time
     }));
   };
@@ -149,6 +153,7 @@ export default function BookingSection() {
       }
 
       setIsSuccessModalOpen(true);
+      resetSlots(false);
       setFormData({
         name: "",
         email: "",
@@ -251,7 +256,21 @@ export default function BookingSection() {
               </select>
               <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
-            {serviceError && <p role="alert" className="text-sm text-red-800">Could not load treatments. <button type="button" className="font-semibold underline" onClick={() => retryServices((attempt) => attempt + 1)}>Retry</button></p>}
+            {serviceError && (
+              <p role="alert" className="text-sm text-red-800">
+                Could not load treatments.{" "}
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  onClick={() => {
+                    setServiceError(false);
+                    retryServices((attempt) => attempt + 1);
+                  }}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
 
             <div className="space-y-4">
               <div className="relative">
@@ -284,7 +303,19 @@ export default function BookingSection() {
                     {loadingSlots ? (
                       <p className="text-sm text-gray-400 font-medium">Loading available hours...</p>
                     ) : slotError ? (
-                      <p role="alert" className="text-sm text-red-800">Could not load available times. <button type="button" className="font-semibold underline" onClick={() => retrySlots((attempt) => attempt + 1)}>Retry</button></p>
+                      <p role="alert" className="text-sm text-red-800">
+                        Could not load available times.{" "}
+                        <button
+                          type="button"
+                          className="font-semibold underline"
+                          onClick={() => {
+                            resetSlots(true);
+                            retrySlots((attempt) => attempt + 1);
+                          }}
+                        >
+                          Retry
+                        </button>
+                      </p>
                     ) : availableSlots.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
                         {availableSlots.map((slot) => {

@@ -4,7 +4,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 
 import { useAdminAccess } from "@/lib/admin-access-context";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -29,7 +29,7 @@ interface Employee {
 export default function EmployeesTab() {
   const { canAdminister } = useAdminAccess();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [roles, setRoles] = useState<{ code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -45,37 +45,30 @@ export default function EmployeesTab() {
   const [roleCode, setRoleCode] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
 
-  useEffect(() => {
-    fetchEmployees();
-    fetchRoles();
+  const fetchEmployees = useCallback(() => {
+    return staffFetch("/employees")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load employees");
+        setEmployees(await res.json());
+      })
+      .catch((err) => {
+        setError((err instanceof Error && err.message) || "An error occurred while loading employees");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchEmployees = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await staffFetch("/employees");
-      if (!res.ok) throw new Error("Failed to load employees");
-      const data = await res.json();
-      setEmployees(data);
-    } catch (err: any) {
-      setError(err.message || "An error occurred while loading employees");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchRoles = useCallback(() => {
+    return staffFetch("/roles")
+      .then(async (res) => {
+        if (res.ok) setRoles(await res.json());
+      })
+      .catch((err) => console.error("Failed to load roles", err));
+  }, []);
 
-  const fetchRoles = async () => {
-    try {
-      const res = await staffFetch("/roles");
-      if (res.ok) {
-        const data = await res.json();
-        setRoles(data);
-      }
-    } catch (err) {
-      console.error("Failed to load roles", err);
-    }
-  };
+  useEffect(() => {
+    void fetchEmployees();
+    void fetchRoles();
+  }, [fetchEmployees, fetchRoles]);
 
   const handleOpenAddModal = () => {
     setModalMode("add");
@@ -114,15 +107,13 @@ export default function EmployeesTab() {
         : `/employees/${selectedId}`;
       const method = modalMode === "add" ? "POST" : "PUT";
       
-      const payload: any = { name, email, phone };
-      if (password) {
-        payload.password = password;
-      }
-      if (roleCode) {
-        payload.roleCode = roleCode;
-      } else {
-        payload.roleCode = null;
-      }
+      const payload = {
+        name,
+        email,
+        phone,
+        ...(password ? { password } : {}),
+        roleCode: roleCode || null,
+      };
 
       const res = await staffFetch(url, {
         method,
@@ -136,9 +127,11 @@ export default function EmployeesTab() {
       }
 
       setIsModalOpen(false);
-      fetchEmployees();
-    } catch (err: any) {
-      alert(err.message || "Failed to save employee");
+      setLoading(true);
+      setError("");
+      void fetchEmployees();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to save employee");
     } finally {
       setSubmitLoading(false);
     }
@@ -153,9 +146,11 @@ export default function EmployeesTab() {
       });
 
       if (!res.ok) throw new Error("Failed to delete employee");
-      fetchEmployees();
-    } catch (err: any) {
-      alert(err.message || "Failed to delete employee");
+      setLoading(true);
+      setError("");
+      void fetchEmployees();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to delete employee");
     }
   };
 

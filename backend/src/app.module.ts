@@ -14,7 +14,6 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { AbsencesModule } from './absences/absences.module';
 import { MailModule } from './mail/mail.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
 import { LoggingModule } from './logging/logging.module';
 import { SettingsController } from './settings/settings.controller';
 import { validateEnvironment } from './production-config';
@@ -33,8 +32,8 @@ import { validateEnvironment } from './production-config';
         type: 'postgres',
         host: configService.get<string>('DB_HOST', 'localhost'),
         port: parseInt(configService.get<string>('DB_PORT', '5432'), 10),
-        username: configService.get<string>('DB_USERNAME', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', 'postgres'),
+        username: configService.getOrThrow<string>('DB_USERNAME'),
+        password: configService.getOrThrow<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE', 'fw_dental'),
         autoLoadEntities: true,
         synchronize:
@@ -52,7 +51,6 @@ import { validateEnvironment } from './production-config';
     AbsencesModule,
     MailModule,
     DashboardModule,
-    WebhooksModule,
     LoggingModule,
   ],
   controllers: [AppController, SettingsController],

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Users,
   ShoppingBag,
@@ -15,32 +15,59 @@ import { CustomSelect } from "@/components/ui/custom-select";
 import { useAdminAccess } from "@/lib/admin-access-context";
 import { staffFetch } from "@/lib/staff-fetch";
 
+type StatsPeriod = "today" | "week" | "month" | "year";
+type ChartPeriod = "1M" | "3M" | "6M" | "1Y";
+
+interface PeriodStats {
+  balance: number;
+  customers: number;
+  customersGrowth: string;
+  orders: number;
+  ordersGrowth: string;
+  earnings: number;
+}
+
+type DashboardStats = Partial<Record<StatsPeriod, PeriodStats>> & {
+  chartData?: Record<ChartPeriod, { label: string; earnings: number }[]>;
+  upcomingAppointments?: {
+    id: string;
+    patient: string;
+    doctor: string;
+    time: string;
+    treatment: string;
+    status: string;
+  }[];
+  clinicActivity?: {
+    activeDentists: number;
+    totalDentists: number;
+    occupancyRate: number;
+    occupancyRateGrowth: string;
+  };
+};
+
 export default function AdminDashboard() {
   const { can } = useAdminAccess();
-  const [activeTab, setActiveTab] = useState("1Y");
-  const [globalFilter, setGlobalFilter] = useState("year");
-  const [data, setData] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<ChartPeriod>("1Y");
+  const [globalFilter, setGlobalFilter] = useState<StatsPeriod>("year");
+  const [data, setData] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetchStats();
+  const fetchStats = useCallback(() => {
+    return staffFetch("/dashboard/stats")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load dashboard statistics");
+        setData(await res.json());
+      })
+      .catch((err) => {
+        setError((err instanceof Error && err.message) || "An error occurred while loading dashboard statistics");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchStats = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await staffFetch("/dashboard/stats");
-      if (!res.ok) throw new Error("Failed to load dashboard statistics");
-      const json = await res.json();
-      setData(json);
-    } catch (err: any) {
-      setError(err.message || "An error occurred while loading dashboard statistics");
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    void fetchStats();
+  }, [fetchStats]);
 
   const formatCurrency = (val: number | string) => {
     const num = Number(val) || 0;
@@ -78,7 +105,11 @@ export default function AdminDashboard() {
       <div className="h-full flex flex-col items-center justify-center bg-white rounded-3xl border border-red-100 p-8 text-center">
         <p className="text-red-500 font-semibold mb-2">{error}</p>
         <button
-          onClick={fetchStats}
+          onClick={() => {
+            setLoading(true);
+            setError("");
+            void fetchStats();
+          }}
           className="px-4 py-2 bg-[#008080] text-white text-xs font-bold rounded-xl hover:bg-[#006666] transition-all animate-scale-up"
         >
           Try Again
@@ -88,15 +119,15 @@ export default function AdminDashboard() {
   }
 
   // Get active statistics source based on globalFilter selection
-  const statsSource = data?.[globalFilter] || data?.year || {};
+  const statsSource = data?.[globalFilter] ?? data?.year;
 
   const stats = {
-    balance: formatCurrency(statsSource.balance ?? 0),
-    customers: formatNumber(statsSource.customers ?? 0),
-    customersGrowth: statsSource.customersGrowth ?? "0.0%",
-    orders: formatNumber(statsSource.orders ?? 0),
-    ordersGrowth: statsSource.ordersGrowth ?? "0.0%",
-    earnings: formatCurrency(statsSource.earnings ?? 0),
+    balance: formatCurrency(statsSource?.balance ?? 0),
+    customers: formatNumber(statsSource?.customers ?? 0),
+    customersGrowth: statsSource?.customersGrowth ?? "0.0%",
+    orders: formatNumber(statsSource?.orders ?? 0),
+    ordersGrowth: statsSource?.ordersGrowth ?? "0.0%",
+    earnings: formatCurrency(statsSource?.earnings ?? 0),
   };
 
   const showMetrics = !!data?.clinicActivity;
@@ -105,22 +136,22 @@ export default function AdminDashboard() {
   
   // Chart calculation
   const points = data?.chartData?.[activeTab] || [];
-  const maxEarnings = Math.max(...points.map((p: any) => p.earnings), 0);
+  const maxEarnings = Math.max(...points.map(p => p.earnings), 0);
   const divisor = maxEarnings > 0 ? maxEarnings : 1;
 
   // Generate SVG coordinates (viewBox width: 900, height: 170)
-  const coords = points.map((p: any, idx: number) => {
+  const coords = points.map((p, idx) => {
     const x = points.length > 1 ? idx * (900 / (points.length - 1)) : 450;
     const y = 140 - (p.earnings / divisor) * (140 - 20); // Y ranges from 20 to 140
     return { x, y };
   });
 
   const linePath = coords.length > 0
-    ? `M ${coords.map((c: any) => `${c.x} ${c.y}`).join(" L ")}`
+    ? `M ${coords.map(c => `${c.x} ${c.y}`).join(" L ")}`
     : "";
 
   const areaPath = coords.length > 0
-    ? `M 0 170 L ${coords.map((c: any) => `${c.x} ${c.y}`).join(" L ")} L 900 170 Z`
+    ? `M 0 170 L ${coords.map(c => `${c.x} ${c.y}`).join(" L ")} L 900 170 Z`
     : "";
 
   const yAxisLabels = [
@@ -166,7 +197,7 @@ export default function AdminDashboard() {
             </span>
             <CustomSelect
               value={globalFilter}
-              onChange={setGlobalFilter}
+              onChange={(period) => setGlobalFilter(period as StatsPeriod)}
               options={[
                 { value: "today", label: "Today" },
                 { value: "week", label: "This Week" },
@@ -304,7 +335,7 @@ export default function AdminDashboard() {
 
             {/* Time Filters */}
             <div className="flex bg-[#f5f6fa] rounded-lg p-0.5 select-none flex-none">
-              {["1M", "3M", "6M", "1Y"].map((tab) => (
+              {(["1M", "3M", "6M", "1Y"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -358,7 +389,7 @@ export default function AdminDashboard() {
                   />
 
                   {/* Data points dots */}
-                  {coords.map((c: any, idx: number) => (
+                  {coords.map((c, idx) => (
                     <circle
                       key={idx}
                       cx={c.x}
@@ -387,7 +418,7 @@ export default function AdminDashboard() {
 
           {/* X Axis Labels */}
           <div className="flex justify-between text-[10px] text-gray-400 font-bold px-2 mt-1 select-none pr-10 flex-none border-t border-gray-50 pt-1">
-            {points.map((p: any, idx: number) => {
+            {points.map((p, idx) => {
               const showLabel =
                 points.length <= 12 ||
                 idx === 0 ||
@@ -436,7 +467,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody role="rowgroup" className="divide-y divide-gray-50/50">
-                    {upcomingAppointments.map((app: any) => (
+                    {upcomingAppointments.map(app => (
                       <tr role="row" key={app.id} className="hover:bg-gray-50/30 transition-colors">
                         <td role="cell" className="py-2 pr-2 font-bold text-gray-800">{app.patient}</td>
                         <td role="cell" data-label="Doctor" className="py-2 px-2 text-gray-500 font-medium">{app.doctor}</td>

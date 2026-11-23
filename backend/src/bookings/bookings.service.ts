@@ -8,7 +8,7 @@ import { PatientsRepository } from './patients.repository';
 import { Doctor } from '../doctors/doctor.entity';
 import { DoctorsService } from '../doctors/doctors.service';
 import { ServicesService } from '../services/services.service';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const slotStarts = Array.from({ length: 16 }, (_, index) => 9 * 60 + index * 30);
@@ -69,7 +69,7 @@ export class BookingsService {
     private readonly patientsRepository: PatientsRepository,
     private readonly doctorsService: DoctorsService,
     private readonly servicesService: ServicesService,
-    private readonly webhooks: WebhooksService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   findAll() {
@@ -136,7 +136,7 @@ export class BookingsService {
           phoneNumber,
           email: address || undefined,
         });
-        void this.webhooks.triggerWebhook('BOOKING_CREATED');
+        void this.notifications.publish('BOOKING_CREATED');
         return booking;
       } catch (error) {
         if (!isBookingOverlap(error)) throw error;

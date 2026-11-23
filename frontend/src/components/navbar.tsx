@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ export default function Navbar() {
       <div className="max-w-[1400px] mx-auto flex items-center justify-between px-6 lg:px-10 py-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <img src="/fw-dental-logo.png" alt="FW Dental" className="h-8 w-auto" />
+          <Image src="/fw-dental-logo.png" width={32} height={32} alt="FW Dental" className="h-8 w-auto" />
           <span className="text-xl font-bold tracking-tight text-black">
             FW Dental
           </span>

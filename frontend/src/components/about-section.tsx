@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 
 export default function AboutSection() {
@@ -63,8 +64,11 @@ export default function AboutSection() {
           <div className="space-y-6">
             {/* Main Image */}
             <div className="rounded-2xl overflow-hidden h-[350px] lg:h-[400px]">
-              <img
+              <Image
                 src="/dental-equipment.jpg"
+                width={1200}
+                height={896}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 alt="Dental clinic equipment"
                 className="w-full h-full object-cover"
               />
@@ -81,8 +85,10 @@ export default function AboutSection() {
                     key={i}
                     className="w-14 h-14 rounded-full border-2 border-white overflow-hidden"
                   >
-                    <img
+                    <Image
                       src="/dental-equipment.jpg"
+                      width={56}
+                      height={42}
                       alt={`Gallery ${i}`}
                       className="w-full h-full object-cover"
                       style={{

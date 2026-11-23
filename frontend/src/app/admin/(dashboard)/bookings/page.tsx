@@ -4,23 +4,19 @@ import { AdminDialog } from "@/components/admin-dialog";
 
 import { useAdminAccess } from "@/lib/admin-access-context";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  Calendar,
   Search,
   Plus,
-  User,
   Phone,
   Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
-  Filter,
   Check,
   X,
   CreditCard
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomSelect } from "@/components/ui/custom-select";
@@ -43,11 +39,43 @@ interface Booking {
   servicePrice: number;
 }
 
+interface BackendBooking {
+  id: string;
+  patient?: { fullName: string; phoneNumber: string };
+  doctor?: { name: string };
+  service?: { name: string; priceFrom: string | number };
+  bookingDate: string;
+  startTime: string;
+  statusCode?: string;
+  sourceCode?: string;
+  transactions?: { deleted: number }[];
+  patientId: string;
+  doctorId: string;
+  serviceId: string;
+}
+
+const mapBackendBooking = (b: BackendBooking): Booking => ({
+  id: b.id,
+  patientName: b.patient ? b.patient.fullName : "Unknown",
+  phone: b.patient ? b.patient.phoneNumber : "",
+  doctorName: b.doctor ? b.doctor.name : "Unassigned",
+  date: b.bookingDate,
+  time: b.startTime,
+  treatment: b.service ? b.service.name : "Unknown",
+  status: b.statusCode ? (b.statusCode.charAt(0) + b.statusCode.slice(1).toLowerCase()) as Booking["status"] : "Pending",
+  sourceCode: b.sourceCode || "WEBSITE",
+  hasTransaction: b.transactions ? b.transactions.some((tx) => tx.deleted === 0) : false,
+  patientId: b.patientId,
+  doctorId: b.doctorId,
+  serviceId: b.serviceId,
+  servicePrice: b.service ? Number(b.service.priceFrom) || 0 : 0,
+});
+
 export default function AdminBookingsPage() {
   const { can } = useAdminAccess();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingLoad, setBookingLoad] = useState<"loading" | "ready" | "error">("loading");
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -60,25 +88,7 @@ export default function AdminBookingsPage() {
   const [newTime, setNewTime] = useState("");
   const [newTreatment, setNewTreatment] = useState("");
 
-  const mapBackendBooking = (b: any): Booking => ({
-    id: b.id,
-    patientName: b.patient ? b.patient.fullName : "Unknown",
-    phone: b.patient ? b.patient.phoneNumber : "",
-    doctorName: b.doctor ? b.doctor.name : "Unassigned",
-    date: b.bookingDate,
-    time: b.startTime,
-    treatment: b.service ? b.service.name : "Unknown",
-    status: b.statusCode ? (b.statusCode.charAt(0) + b.statusCode.slice(1).toLowerCase()) as any : "Pending",
-    sourceCode: b.sourceCode || "WEBSITE",
-    hasTransaction: b.transactions ? b.transactions.some((tx: any) => tx.deleted === 0) : false,
-    patientId: b.patientId,
-    doctorId: b.doctorId,
-    serviceId: b.serviceId,
-    servicePrice: b.service ? Number(b.service.priceFrom) || 0 : 0,
-  });
-
-  const fetchBookings = () => {
-    setBookingLoad("loading");
+  const loadBookings = useCallback(() => {
     staffFetch("/bookings")
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch bookings");
@@ -89,10 +99,15 @@ export default function AdminBookingsPage() {
         setBookingLoad("ready");
       })
       .catch(() => setBookingLoad("error"));
+  }, []);
+
+  const fetchBookings = () => {
+    setBookingLoad("loading");
+    loadBookings();
   };
 
   useEffect(() => {
-    fetchBookings();
+    loadBookings();
 
     fetch("/api/clinic/services")
       .then(res => res.json())
@@ -103,7 +118,7 @@ export default function AdminBookingsPage() {
         }
       })
       .catch(err => console.error("Error loading services:", err));
-  }, []);
+  }, [loadBookings]);
 
   // Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -231,8 +246,8 @@ export default function AdminBookingsPage() {
       if (services.length > 0) {
         setNewTreatment(services[0].id);
       }
-    } catch (err: any) {
-      alert(err.message || "Error scheduling appointment");
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Error scheduling appointment");
     }
   };
 

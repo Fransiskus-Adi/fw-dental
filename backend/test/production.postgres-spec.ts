@@ -73,6 +73,7 @@ beforeAll(async () => {
     NODE_ENV: 'test',
     PUBLIC_APP_URL: 'https://clinic.example.test',
     NOTIFICATION_WEBHOOK_SECRET: '',
+    SMTP_NOTIFICATION_TO: '',
   });
   const { AppModule } = jest.requireActual<typeof import('../src/app.module')>('../src/app.module');
   const module = await Test.createTestingModule({ imports: [AppModule] })
@@ -93,7 +94,7 @@ afterAll(async () => {
     if (createdDatabase) await admin!.query('DROP DATABASE ' + database);
   } finally {
     await admin?.end();
-    for (const key of ['DB_DATABASE', 'DB_HOST', 'DB_SYNCHRONIZE', 'NODE_ENV', 'PUBLIC_APP_URL', 'NOTIFICATION_WEBHOOK_SECRET']) {
+    for (const key of ['DB_DATABASE', 'DB_HOST', 'DB_SYNCHRONIZE', 'NODE_ENV', 'PUBLIC_APP_URL', 'NOTIFICATION_WEBHOOK_SECRET', 'SMTP_NOTIFICATION_TO']) {
       if (originalEnvironment[key] === undefined) delete process.env[key];
       else process.env[key] = originalEnvironment[key];
     }

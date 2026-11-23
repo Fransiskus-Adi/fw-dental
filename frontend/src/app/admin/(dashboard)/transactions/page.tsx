@@ -4,7 +4,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 
 import { useAdminAccess } from "@/lib/admin-access-context";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -14,17 +14,9 @@ import {
   Printer,
   CheckCircle,
   XCircle,
-  AlertCircle,
   CreditCard,
-  User,
-  Phone,
-  Calendar,
-  Sparkles,
-  Stethoscope,
-  PlusCircle,
-  DollarSign
+  PlusCircle
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomSelect } from "@/components/ui/custom-select";
@@ -122,51 +114,36 @@ export default function AdminTransactionsPage() {
   const [patientSearch, setPatientSearch] = useState("");
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
-  useEffect(() => {
-    fetchTransactions();
-    fetchInitialData();
+  const fetchTransactions = useCallback(() => {
+    return staffFetch("/transactions")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load transactions");
+        setTransactions(await res.json());
+      })
+      .catch((err) => {
+        console.error("Error fetching transactions:", err);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchTransactions = async () => {
-    setLoading(true);
-    try {
-      const res = await staffFetch("/transactions");
-      if (!res.ok) throw new Error("Failed to load transactions");
-      const data = await res.json();
-      setTransactions(data);
-    } catch (err) {
-      console.error("Error fetching transactions:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchInitialData = useCallback(() => {
+    return staffFetch("/bookings/patients")
+      .then(async (patientsResponse) => {
+        if (patientsResponse.ok) setPatients(await patientsResponse.json());
 
-  const fetchInitialData = async () => {
-    try {
-      // Fetch patients
-      const patRes = await staffFetch("/bookings/patients");
-      if (patRes.ok) {
-        const patData = await patRes.json();
-        setPatients(patData);
-      }
+        const doctorsResponse = await staffFetch("/doctors");
+        if (doctorsResponse.ok) setDoctors(await doctorsResponse.json());
 
-      // Fetch doctors
-      const docRes = await staffFetch("/doctors");
-      if (docRes.ok) {
-        const docData = await docRes.json();
-        setDoctors(docData);
-      }
+        const servicesResponse = await fetch("/api/clinic/services");
+        if (servicesResponse.ok) setServices(await servicesResponse.json());
+      })
+      .catch((err) => console.error("Error loading master data for POS:", err));
+  }, []);
 
-      // Fetch services
-      const srvRes = await fetch("/api/clinic/services");
-      if (srvRes.ok) {
-        const srvData = await srvRes.json();
-        setServices(srvData);
-      }
-    } catch (err) {
-      console.error("Error loading master data for POS:", err);
-    }
-  };
+  useEffect(() => {
+    void fetchTransactions();
+    void fetchInitialData();
+  }, [fetchTransactions, fetchInitialData]);
 
   // Subtotal Calculation for POS Form
   const subtotal = checkoutItems.reduce(
@@ -192,7 +169,7 @@ export default function AdminTransactionsPage() {
   };
 
   // Update specific Checkout Item field
-  const updateCheckoutItem = (index: number, field: keyof TransactionItem, value: any) => {
+  const updateCheckoutItem = <Field extends keyof TransactionItem>(index: number, field: Field, value: TransactionItem[Field]) => {
     const updated = [...checkoutItems];
     
     if (field === "serviceId") {
@@ -200,7 +177,7 @@ export default function AdminTransactionsPage() {
       if (service) {
         updated[index] = {
           ...updated[index],
-          serviceId: value,
+          serviceId: service.id,
           name: service.name,
           price: Number(service.priceFrom) || 0,
         };
@@ -280,11 +257,12 @@ export default function AdminTransactionsPage() {
       }
 
       setIsCheckoutOpen(false);
-      fetchTransactions();
+      setLoading(true);
+      void fetchTransactions();
       fetchInitialData(); // Reload patients list
       resetCheckoutForm();
-    } catch (err: any) {
-      alert(err.message || "Error submitting POS transaction.");
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Error submitting POS transaction.");
     }
   };
 
@@ -313,7 +291,8 @@ export default function AdminTransactionsPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed to update payment status");
-      fetchTransactions();
+      setLoading(true);
+      void fetchTransactions();
     } catch (err) {
       console.error(err);
       alert("Error updating status");
@@ -328,7 +307,8 @@ export default function AdminTransactionsPage() {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Failed to delete transaction");
-      fetchTransactions();
+      setLoading(true);
+      void fetchTransactions();
     } catch (err) {
       console.error(err);
       alert("Error deleting record");

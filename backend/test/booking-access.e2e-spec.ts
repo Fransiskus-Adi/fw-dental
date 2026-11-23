@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { hashSync } from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AbsencesController } from '../src/absences/absences.controller';
@@ -29,7 +30,7 @@ import { TransactionsService } from '../src/transactions/transactions.service';
 import { UsersController } from '../src/users/users.controller';
 import { UsersModule } from '../src/users/users.module';
 import { UsersService } from '../src/users/users.service';
-import { WebhooksService } from '../src/webhooks/webhooks.service';
+import { NotificationsService } from '../src/notifications/notifications.service';
 
 const patient = { id: '42167de4-8d4b-46a8-86b4-8853104956b0', fullName: 'Existing Patient' };
 const serviceId = 'a2e0d583-fbb1-4a99-8423-1f5811431234';
@@ -111,7 +112,11 @@ describe('Booking API access', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [() => ({ JWT_SECRET: randomBytes(32).toString('hex') })],
+        }),
         AuthModule,
       ],
       controllers: [
@@ -170,8 +175,8 @@ describe('Booking API access', () => {
         },
         { provide: TransactionsService, useValue: transactions },
         {
-          provide: WebhooksService,
-          useValue: { triggerWebhook: jest.fn().mockResolvedValue(true) },
+          provide: NotificationsService,
+          useValue: { publish: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     })

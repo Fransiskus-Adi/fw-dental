@@ -59,8 +59,8 @@ export default function AdminAbsencePage() {
   const activeTab = canViewOwnHistory && canViewEmployeeLogs
     ? selectedTab
     : canViewOwnHistory ? "my" : "employee";
-  const [allLogs, setAllLogs] = useState<any[]>([]);
-  const [allLogsLoading, setAllLogsLoading] = useState<boolean>(false);
+  const [allLogs, setAllLogs] = useState<(Absence & { user?: { name: string; email: string } })[]>([]);
+  const [allLogsLoading, setAllLogsLoading] = useState<boolean>(true);
   const [logsSearchTerm, setLogsSearchTerm] = useState<string>("");
   const [logsDateFilter, setLogsDateFilter] = useState<string>("");
 
@@ -87,53 +87,46 @@ export default function AdminAbsencePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchData = async (uid: string) => {
-    setLoading(true);
-    try {
-      // 1. Fetch today's status
-      const todayRes = await staffFetch(`/absences/today/${uid}`);
-      if (todayRes.ok) {
-        const body = await todayRes.text();
-        setTodayAbsence(body ? JSON.parse(body) : null);
-      }
+  const fetchData = useCallback((uid: string) => {
+    return staffFetch(`/absences/today/${uid}`)
+      .then(async (todayRes) => {
+        if (todayRes.ok) {
+          const body = await todayRes.text();
+          setTodayAbsence(body ? JSON.parse(body) : null);
+        }
 
-      // 2. Fetch history
-      if (canViewOwnHistory) {
-        const historyRes = await staffFetch(`/absences/history/${uid}`);
-        if (historyRes.ok) setHistory(await historyRes.json());
-      }
-    } catch (err) {
-      console.error("Error fetching absence data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+        if (canViewOwnHistory) {
+          const historyRes = await staffFetch(`/absences/history/${uid}`);
+          if (historyRes.ok) setHistory(await historyRes.json());
+        }
+      })
+      .catch((err) => console.error("Error fetching absence data:", err))
+      .finally(() => setLoading(false));
+  }, [canViewOwnHistory]);
 
   useEffect(() => {
     if (userId) {
-      fetchData(userId);
+      void fetchData(userId);
     }
-  }, [userId, canViewOwnHistory]);
+  }, [userId, fetchData]);
 
-  const fetchAllLogs = async () => {
-    setAllLogsLoading(true);
-    try {
-      const res = await staffFetch("/absences");
-      if (!res.ok) throw new Error("Failed to fetch employee logs");
-      const data = await res.json();
-      setAllLogs(data);
-    } catch (err: any) {
-      console.error("Error fetching all logs:", err);
-    } finally {
-      setAllLogsLoading(false);
-    }
-  };
+  const fetchAllLogs = useCallback(() => {
+    return staffFetch("/absences")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to fetch employee logs");
+        setAllLogs(await res.json());
+      })
+      .catch((err) => {
+        console.error("Error fetching all logs:", err);
+      })
+      .finally(() => setAllLogsLoading(false));
+  }, []);
 
   useEffect(() => {
     if (canViewEmployeeLogs && activeTab === "employee") {
-      fetchAllLogs();
+      void fetchAllLogs();
     }
-  }, [canViewEmployeeLogs, activeTab]);
+  }, [canViewEmployeeLogs, activeTab, fetchAllLogs]);
 
   const handleClockIn = async (loc: string) => {
     if (!userId) return;
@@ -165,9 +158,10 @@ export default function AdminAbsencePage() {
       window.dispatchEvent(new Event("clock-in-success"));
 
       // Refresh history
-      fetchData(userId);
-    } catch (err: any) {
-      setError(err.message || "Error checking in");
+      setLoading(true);
+      void fetchData(userId);
+    } catch (err) {
+      setError((err instanceof Error && err.message) || "Error checking in");
     } finally {
       setSubmitting(false);
     }
@@ -201,9 +195,10 @@ export default function AdminAbsencePage() {
       window.dispatchEvent(new Event("clock-in-success"));
 
       // Refresh history
-      fetchData(userId);
-    } catch (err: any) {
-      setError(err.message || "Error checking out");
+      setLoading(true);
+      void fetchData(userId);
+    } catch (err) {
+      setError((err instanceof Error && err.message) || "Error checking out");
     } finally {
       setSubmitting(false);
     }
@@ -850,7 +845,10 @@ export default function AdminAbsencePage() {
                   My Attendance
                 </button>
                 <button
-                  onClick={() => setActiveTab("employee")}
+                  onClick={() => {
+                    if (activeTab !== "employee") setAllLogsLoading(true);
+                    setActiveTab("employee");
+                  }}
                   className={`pb-1 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
                     activeTab === "employee"
                       ? "border-[#008080] text-[#008080]"
@@ -953,7 +951,10 @@ export default function AdminAbsencePage() {
                     </button>
                   )}
                   <button
-                    onClick={fetchAllLogs}
+                    onClick={() => {
+                      setAllLogsLoading(true);
+                      void fetchAllLogs();
+                    }}
                     disabled={allLogsLoading}
                     className="size-8 flex items-center justify-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-50 cursor-pointer"
                     title="Refresh Logs"

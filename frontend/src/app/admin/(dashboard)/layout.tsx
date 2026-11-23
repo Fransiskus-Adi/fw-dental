@@ -16,7 +16,6 @@ import {
   Settings,
   Search,
   Bell,
-  Grid,
   LogOut,
   Stethoscope,
   Database,
@@ -30,6 +29,16 @@ import {
 } from "lucide-react";
 
 const mobilePrimaryRoutes = ["/admin/absence", "/admin", "/admin/bookings", "/admin/transactions", "/admin/schedules"];
+
+interface StaffNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  redirectUrl: string;
+}
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -105,8 +114,8 @@ export default function AdminDashboardLayout({
   const canViewNotifications = currentUser?.permissions?.feat_notifications_view === true;
   const notificationStorageKey = `admin_notifications:${userId}`;
   const [isClockedOut, setIsClockedOut] = useState<boolean>(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [toasts, setToasts] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<StaffNotification[]>([]);
+  const [toasts, setToasts] = useState<StaffNotification[]>([]);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -191,7 +200,7 @@ export default function AdminDashboardLayout({
 
   const playNotificationSound = () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContext = window.AudioContext || (window as Window & { webkitAudioContext?: typeof window.AudioContext }).webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
       const now = ctx.currentTime;
@@ -230,8 +239,11 @@ export default function AdminDashboardLayout({
     const saved = localStorage.getItem(notificationStorageKey);
     if (saved) {
       try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Local storage is only available after hydration.
         setNotifications(JSON.parse(saved));
-      } catch (e) {}
+      } catch {
+        // Ignore an invalid saved notification list.
+      }
     }
 
     const eventSource = new EventSource("/api/notifications/sse");
@@ -316,7 +328,7 @@ export default function AdminDashboardLayout({
     localStorage.removeItem(notificationStorageKey);
   };
 
-  const handleNotificationClick = (notif: any) => {
+  const handleNotificationClick = (notif: StaffNotification) => {
     setNotifications((prev) => {
       const updated = prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n));
       localStorage.setItem(notificationStorageKey, JSON.stringify(updated));

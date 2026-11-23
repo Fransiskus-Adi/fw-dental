@@ -49,6 +49,7 @@ Use systemd to run each process under a dedicated unprivileged service account. 
 | `JWT_SECRET` | Independent random secret of at least 32 characters |
 | `PUBLIC_APP_URL` | Exact public HTTPS origin, such as `https://clinic.example.com` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Clinic mail sender with TLS and a working verified sender address |
+| `SMTP_NOTIFICATION_TO` | Optional staff inbox for new bookings and attendance reminders |
 | `NOTIFICATION_WEBHOOK_SECRET` | Independent random secret, for example 32 bytes encoded as hex |
 | `WEBHOOK_URL` | `http://127.0.0.1:3000/api/webhooks/notifications` |
 | `TRUSTED_PROXY_ADDRESSES` | `127.0.0.1/32` with the Nginx setup below |

@@ -8,14 +8,14 @@ import { BookingsRepository } from './bookings.repository';
 import { PatientsRepository } from './patients.repository';
 import { DoctorsModule } from '../doctors/doctors.module';
 import { ServicesModule } from '../services/services.module';
-import { WebhooksModule } from '../webhooks/webhooks.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Booking, Patient]),
     DoctorsModule,
     ServicesModule,
-    WebhooksModule,
+    NotificationsModule,
   ],
   providers: [BookingsService, BookingsRepository, PatientsRepository],
   controllers: [BookingsController],

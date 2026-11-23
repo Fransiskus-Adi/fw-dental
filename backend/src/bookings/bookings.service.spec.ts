@@ -5,7 +5,7 @@ import { PatientsRepository } from './patients.repository';
 import { DoctorsService } from '../doctors/doctors.service';
 import { ServicesService } from '../services/services.service';
 import { BadRequestException } from '@nestjs/common';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('BookingsService Security/Validation', () => {
   let service: BookingsService;
@@ -23,7 +23,7 @@ describe('BookingsService Security/Validation', () => {
         { provide: PatientsRepository, useValue: mockPatientsRepository },
         { provide: DoctorsService, useValue: mockDoctorsService },
         { provide: ServicesService, useValue: mockServicesService },
-        { provide: WebhooksService, useValue: {} },
+        { provide: NotificationsService, useValue: {} },
       ],
     }).compile();
 

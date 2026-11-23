@@ -20,10 +20,10 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      const listener = (data: any) => {
+      const listener = (data: unknown) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch (err) {
+        } catch {
           // Stream is closed, listener cleanup is triggered
         }
       };

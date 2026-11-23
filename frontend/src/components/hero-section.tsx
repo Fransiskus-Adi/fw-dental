@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ChevronDown, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -7,8 +8,11 @@ export default function HeroSection() {
       {/* Background dental image */}
       <div className="absolute inset-0 flex items-center justify-end pointer-events-none select-none">
         <div className="relative w-[55%] h-full">
-          <img
+          <Image
             src="/dental-hero.png"
+            width={896}
+            height={1200}
+            sizes="55vw"
             alt="Dental aligner"
             className="absolute right-[-5%] top-[10%] w-full h-[80%] object-contain opacity-90"
           />

@@ -46,22 +46,22 @@ export default function AdminSchedulesPage() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setLoadError("");
-    try {
-      const [doctorResponse, bookingResponse] = await Promise.all([
-        staffFetch("/doctors", { signal }),
-        staffFetch("/bookings", { signal }),
-      ]);
-      if (!doctorResponse.ok || !bookingResponse.ok) throw new Error("Could not load the schedule.");
-      const [doctorData, bookingData] = await Promise.all([doctorResponse.json(), bookingResponse.json()]);
-      if (!signal?.aborted) {
-        setDoctors(doctorData);
-        setAppointments(bookingData);
-      }
-    } catch {
-      if (!signal?.aborted) setLoadError("Could not load the schedule. Check your connection and try again.");
-    }
+  const load = useCallback((signal?: AbortSignal) => {
+    return Promise.all([
+      staffFetch("/doctors", { signal }),
+      staffFetch("/bookings", { signal }),
+    ])
+      .then(async ([doctorResponse, bookingResponse]) => {
+        if (!doctorResponse.ok || !bookingResponse.ok) throw new Error("Could not load the schedule.");
+        const [doctorData, bookingData] = await Promise.all([doctorResponse.json(), bookingResponse.json()]);
+        if (!signal?.aborted) {
+          setDoctors(doctorData);
+          setAppointments(bookingData);
+        }
+      })
+      .catch(() => {
+        if (!signal?.aborted) setLoadError("Could not load the schedule. Check your connection and try again.");
+      });
   }, []);
 
   useEffect(() => {
@@ -130,7 +130,21 @@ export default function AdminSchedulesPage() {
         </label>
       </div>
 
-      {loadError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{loadError} <button type="button" className="font-semibold underline" onClick={() => void load()}>Retry</button></p>}
+      {loadError && (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+          {loadError}{" "}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => {
+              setLoadError("");
+              void load();
+            }}
+          >
+            Retry
+          </button>
+        </p>
+      )}
       {cancelError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{cancelError}</p>}
       {!appointments && !loadError && <p role="status" className="text-sm text-gray-600">Loading schedule…</p>}
 

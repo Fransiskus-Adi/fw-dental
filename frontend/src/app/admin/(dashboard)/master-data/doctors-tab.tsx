@@ -5,7 +5,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 import { useAdminAccess } from "@/lib/admin-access-context";
 import { staffFetch } from "@/lib/staff-fetch";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -51,24 +51,21 @@ export default function DoctorsTab() {
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [submitLoading, setSubmitLoading] = useState(false);
 
-  useEffect(() => {
-    fetchDoctors();
+  const fetchDoctors = useCallback(() => {
+    return staffFetch("/doctors")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load doctors");
+        setDoctors(await res.json());
+      })
+      .catch((err) => {
+        setError((err instanceof Error && err.message) || "An error occurred while loading doctors");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchDoctors = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await staffFetch("/doctors");
-      if (!res.ok) throw new Error("Failed to load doctors");
-      const data = await res.json();
-      setDoctors(data);
-    } catch (err: any) {
-      setError(err.message || "An error occurred while loading doctors");
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    void fetchDoctors();
+  }, [fetchDoctors]);
 
   const handleOpenAddModal = () => {
     setModalMode("add");
@@ -106,7 +103,7 @@ export default function DoctorsTab() {
       const ampm = hours >= 12 ? "PM" : "AM";
       const displayHours = hours % 12 || 12;
       return `${displayHours.toString().padStart(2, "0")}:${minStr} ${ampm}`;
-    } catch (e) {
+    } catch {
       return timeStr;
     }
   };
@@ -146,9 +143,11 @@ export default function DoctorsTab() {
       }
 
       setIsModalOpen(false);
-      fetchDoctors();
-    } catch (err: any) {
-      alert(err.message || "Failed to save doctor");
+      setLoading(true);
+      setError("");
+      void fetchDoctors();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to save doctor");
     } finally {
       setSubmitLoading(false);
     }
@@ -168,8 +167,8 @@ export default function DoctorsTab() {
       setDoctors(prev =>
         prev.map(d => (d.id === doc.id ? { ...d, status: newStatus } : d))
       );
-    } catch (err: any) {
-      alert(err.message || "Failed to update status");
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to update status");
     }
   };
 
@@ -182,9 +181,11 @@ export default function DoctorsTab() {
       });
 
       if (!res.ok) throw new Error("Failed to delete doctor");
-      fetchDoctors();
-    } catch (err: any) {
-      alert(err.message || "Failed to delete doctor");
+      setLoading(true);
+      setError("");
+      void fetchDoctors();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to delete doctor");
     }
   };
 

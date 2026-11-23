@@ -4,7 +4,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 
 import { useAdminAccess } from "@/lib/admin-access-context";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -194,24 +194,21 @@ export default function RolesPage() {
   const [activeMenuCode, setActiveMenuCode] = useState<string>("DASHBOARD");
   const [authoritySearchTerm, setAuthoritySearchTerm] = useState("");
 
-  useEffect(() => {
-    fetchRoles();
+  const fetchRoles = useCallback(() => {
+    return staffFetch("/roles")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load roles");
+        setRoles(await res.json());
+      })
+      .catch((err) => {
+        setError((err instanceof Error && err.message) || "An error occurred while loading roles");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchRoles = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await staffFetch("/roles");
-      if (!res.ok) throw new Error("Failed to load roles");
-      const data = await res.json();
-      setRoles(data);
-    } catch (err: any) {
-      setError(err.message || "An error occurred while loading roles");
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    void fetchRoles();
+  }, [fetchRoles]);
 
   const handleOpenAddModal = () => {
     setModalMode("add");
@@ -333,9 +330,11 @@ export default function RolesPage() {
       }
 
       setIsModalOpen(false);
-      fetchRoles();
-    } catch (err: any) {
-      alert(err.message || "Failed to save role");
+      setLoading(true);
+      setError("");
+      void fetchRoles();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to save role");
     } finally {
       setSubmitLoading(false);
     }
@@ -355,8 +354,8 @@ export default function RolesPage() {
       setRoles(prev =>
         prev.map(r => (r.code === role.code ? { ...r, enabled: newEnabled } : r))
       );
-    } catch (err: any) {
-      alert(err.message || "Failed to update status");
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to update status");
     }
   };
 
@@ -369,9 +368,11 @@ export default function RolesPage() {
       });
 
       if (!res.ok) throw new Error("Failed to delete role");
-      fetchRoles();
-    } catch (err: any) {
-      alert(err.message || "Failed to delete role");
+      setLoading(true);
+      setError("");
+      void fetchRoles();
+    } catch (err) {
+      alert((err instanceof Error && err.message) || "Failed to delete role");
     }
   };
 

@@ -33,6 +33,12 @@ $ npm install
 
 ## Compile and run the project
 
+Copy `.env.example` to `.env` in the backend directory and fill in
+`DB_USERNAME`, `DB_PASSWORD`, and a private `JWT_SECRET` of at least
+32 characters. For dashboard notifications, set the same independent
+`NOTIFICATION_WEBHOOK_SECRET` in `backend/.env` and `frontend/.env.local`.
+Generate each secret with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
+
 Apply the SQL files in `db/migration` in version order to an empty development
 database before starting the backend. This V1–V4 baseline replaces the earlier
 development migration chain. If you already applied the earlier scripts,
@@ -41,8 +47,13 @@ for any data you need. The API checks for the required schema at startup.
 
 For fresh databases, apply all migrations before bootstrapping the first
 administrator with `db/bootstrap-admin.sql`. Activate the new account with
-the email reset flow. Set the SMTP credentials and `PUBLIC_APP_URL` before
-testing it. The seeded development administrator starts disabled and has no password.
+the email reset flow. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`,
+`SMTP_FROM`, and `PUBLIC_APP_URL` in `backend/.env` before testing it. The seeded
+development administrator starts disabled and has no password.
+
+Set `SMTP_NOTIFICATION_TO` to one staff inbox to receive new booking and
+attendance reminder emails through the same SMTP sender. Leave it blank
+for dashboard-only notifications. Restart the backend after changing its environment.
 
 See the [Hostinger deployment guide](../DEPLOY_HOSTINGER.md) for production
 configuration, migration preflight, and staging verification.
