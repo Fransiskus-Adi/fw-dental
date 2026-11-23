@@ -1,22 +1,21 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+
 import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
-  Mail,
-  Phone,
-  Calendar,
   X,
-  Edit2,
-  Trash2,
   Lock,
-  Loader2,
-  UserCheck
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { MasterDataTable, RecordActions } from "./master-data-table";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { staffFetch } from "@/lib/staff-fetch";
 
 interface Employee {
   id: string;
@@ -28,6 +27,7 @@ interface Employee {
 }
 
 export default function EmployeesTab() {
+  const { canAdminister } = useAdminAccess();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +54,7 @@ export default function EmployeesTab() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:3001/employees");
+      const res = await staffFetch("/employees");
       if (!res.ok) throw new Error("Failed to load employees");
       const data = await res.json();
       setEmployees(data);
@@ -67,7 +67,7 @@ export default function EmployeesTab() {
 
   const fetchRoles = async () => {
     try {
-      const res = await fetch("http://localhost:3001/roles");
+      const res = await staffFetch("/roles");
       if (res.ok) {
         const data = await res.json();
         setRoles(data);
@@ -110,8 +110,8 @@ export default function EmployeesTab() {
     setSubmitLoading(true);
     try {
       const url = modalMode === "add" 
-        ? "http://localhost:3001/employees" 
-        : `http://localhost:3001/employees/${selectedId}`;
+        ? "/employees"
+        : `/employees/${selectedId}`;
       const method = modalMode === "add" ? "POST" : "PUT";
       
       const payload: any = { name, email, phone };
@@ -124,7 +124,7 @@ export default function EmployeesTab() {
         payload.roleCode = null;
       }
 
-      const res = await fetch(url, {
+      const res = await staffFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -148,7 +148,7 @@ export default function EmployeesTab() {
     if (!confirm(`Are you sure you want to delete employee "${empName}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:3001/employees/${id}`, {
+      const res = await staffFetch(`/employees/${id}`, {
         method: "DELETE",
       });
 
@@ -183,6 +183,7 @@ export default function EmployeesTab() {
           <span className="text-xs text-gray-400 font-bold select-none whitespace-nowrap">
             Total Employees: {employees.length}
           </span>
+          {canAdminister("feat_employees_write") && (
           <button
             onClick={handleOpenAddModal}
             className="h-10 bg-[#5d5aeb] hover:bg-[#4b48cc] text-white font-semibold rounded-xl px-4 transition-all shadow-md shadow-blue-100 flex items-center gap-2 text-sm select-none cursor-pointer"
@@ -190,96 +191,45 @@ export default function EmployeesTab() {
             <Plus className="size-4" />
             Add Employee
           </button>
+          )}
         </div>
       </div>
 
-      {/* Main Listing View */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-gray-100">
-          <Loader2 className="size-8 text-[#5d5aeb] animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="text-center py-12 bg-white rounded-3xl border border-red-100 text-red-500 font-medium">
-          {error}. <button onClick={fetchEmployees} className="underline font-bold text-[#5d5aeb]">Retry</button>
-        </div>
-      ) : filteredEmployees.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEmployees.map(emp => (
-            <Card
-              key={emp.id}
-              className="bg-white border-none shadow-xs rounded-3xl overflow-hidden hover:shadow-md transition-shadow relative group"
-            >
-              <CardContent className="p-6 space-y-4">
-                {/* Profile Header */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="size-12 rounded-2xl bg-[#008080]/10 border border-[#008080]/20 flex items-center justify-center text-[#008080]">
-                      <UserCheck className="size-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-gray-800 text-base">{emp.name}</h4>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Staff</p>
-                        {emp.roleCode && (
-                          <code className="text-[8px] text-[#008080] font-mono font-bold bg-[#008080]/10 px-1.5 py-0.5 rounded">
-                            {emp.roleCode}
-                          </code>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Actions (Edit/Delete) */}
-                  <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleOpenEditModal(emp)}
-                      className="size-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Edit Employee"
-                    >
-                      <Edit2 className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(emp.id, emp.name)}
-                      className="size-8 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Delete Employee"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Details list */}
-                <div className="space-y-2.5 text-xs font-semibold text-gray-500 pt-2 border-t border-gray-50">
-                  <div className="flex items-center gap-2">
-                    <Mail className="size-4 text-gray-400 shrink-0" />
-                    <span className="truncate">{emp.email}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="size-4 text-gray-400 shrink-0" />
-                    <span>{emp.phone || "No phone number"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="size-4 text-gray-400 shrink-0" />
-                    <span>Joined: {new Date(emp.createdAt).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric"
-                    })}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 text-gray-400 font-medium">
-          No employees found.
-        </div>
-      )}
+      <MasterDataTable
+        label="Employees"
+        columns={["Name", "Role", "Email", "Phone", "Joined"]}
+        loading={loading}
+        error={error}
+        empty={filteredEmployees.length === 0}
+        onRetry={fetchEmployees}
+      >
+        {filteredEmployees.map(emp => (
+          <tr role="row" key={emp.id} className="hover:bg-gray-50/60">
+            <th role="rowheader" scope="row" className="min-w-36 font-semibold text-gray-800">{emp.name}</th>
+            <td role="cell" data-label="Role"><code className="whitespace-nowrap">{emp.roleCode || "—"}</code></td>
+            <td role="cell" data-label="Email" className="whitespace-nowrap">{emp.email}</td>
+            <td role="cell" data-label="Phone" className="whitespace-nowrap">{emp.phone || "—"}</td>
+            <td role="cell" data-label="Joined" className="whitespace-nowrap">
+              {emp.createdAt ? new Date(emp.createdAt).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              }) : "—"}
+            </td>
+            <td role="cell" data-label="Actions">
+              <RecordActions
+                name={emp.name}
+                onEdit={canAdminister("feat_employees_write") ? () => handleOpenEditModal(emp) : undefined}
+                onDelete={canAdminister("feat_employees_delete") ? () => handleDelete(emp.id, emp.name) : undefined}
+              />
+            </td>
+          </tr>
+        ))}
+      </MasterDataTable>
 
       {/* Add / Edit Employee Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Employee details" onClose={() => setIsModalOpen(false)} className="admin-overlay fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-800">
@@ -387,7 +337,7 @@ export default function EmployeesTab() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
     </div>
   );

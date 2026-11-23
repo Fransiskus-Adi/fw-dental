@@ -1,21 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { AbsencesRepository } from './absences.repository';
 import { Absence } from './absence.entity';
+import { localDate } from '../local-date';
 
 @Injectable()
 export class AbsencesService {
   constructor(private readonly absencesRepository: AbsencesRepository) {}
 
-  private getTodayDateString(): string {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
   async getTodayAbsence(userId: string): Promise<Absence | null> {
-    const todayStr = this.getTodayDateString();
+    const todayStr = localDate();
     return this.absencesRepository.findTodayAbsence(userId, todayStr);
   }
 
@@ -24,7 +17,7 @@ export class AbsencesService {
   }
 
   async clockIn(userId: string, location: string): Promise<Absence> {
-    const todayStr = this.getTodayDateString();
+    const todayStr = localDate();
     const existing = await this.absencesRepository.findTodayAbsence(userId, todayStr);
 
     if (existing) {
@@ -49,7 +42,7 @@ export class AbsencesService {
   }
 
   async clockOut(userId: string, location: string): Promise<Absence> {
-    const todayStr = this.getTodayDateString();
+    const todayStr = localDate();
     const existing = await this.absencesRepository.findTodayAbsence(userId, todayStr);
 
     if (!existing) {

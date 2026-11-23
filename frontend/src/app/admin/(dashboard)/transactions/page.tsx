@@ -1,5 +1,9 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+
 import React, { useState, useEffect } from "react";
 import {
   Search,
@@ -24,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { staffFetch } from "@/lib/staff-fetch";
 
 interface TransactionItem {
   id?: string;
@@ -77,6 +82,7 @@ interface Transaction {
 }
 
 export default function AdminTransactionsPage() {
+  const { can } = useAdminAccess();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -124,7 +130,7 @@ export default function AdminTransactionsPage() {
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3001/transactions");
+      const res = await staffFetch("/transactions");
       if (!res.ok) throw new Error("Failed to load transactions");
       const data = await res.json();
       setTransactions(data);
@@ -138,21 +144,21 @@ export default function AdminTransactionsPage() {
   const fetchInitialData = async () => {
     try {
       // Fetch patients
-      const patRes = await fetch("http://localhost:3001/bookings/patients");
+      const patRes = await staffFetch("/bookings/patients");
       if (patRes.ok) {
         const patData = await patRes.json();
         setPatients(patData);
       }
 
       // Fetch doctors
-      const docRes = await fetch("http://localhost:3001/doctors");
+      const docRes = await staffFetch("/doctors");
       if (docRes.ok) {
         const docData = await docRes.json();
         setDoctors(docData);
       }
 
       // Fetch services
-      const srvRes = await fetch("http://localhost:3001/services");
+      const srvRes = await fetch("/api/clinic/services");
       if (srvRes.ok) {
         const srvData = await srvRes.json();
         setServices(srvData);
@@ -262,7 +268,7 @@ export default function AdminTransactionsPage() {
     };
 
     try {
-      const res = await fetch("http://localhost:3001/transactions", {
+      const res = await staffFetch("/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -301,7 +307,7 @@ export default function AdminTransactionsPage() {
   // Update Status of transaction
   const updateStatus = async (id: string, newStatus: string) => {
     try {
-      const res = await fetch(`http://localhost:3001/transactions/${id}/status`, {
+      const res = await staffFetch(`/transactions/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -318,7 +324,7 @@ export default function AdminTransactionsPage() {
   const deleteTransaction = async (id: string) => {
     if (!confirm("Are you sure you want to delete this transaction ledger record?")) return;
     try {
-      const res = await fetch(`http://localhost:3001/transactions/${id}`, {
+      const res = await staffFetch(`/transactions/${id}`, {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Failed to delete transaction");
@@ -386,11 +392,12 @@ export default function AdminTransactionsPage() {
       `}</style>
 
       {/* Top Header Section */}
-      <div className="flex items-center justify-between shrink-0 no-print">
+      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Transactions Ledger</h2>
           <p className="text-sm text-gray-400 font-medium">Manage POS sales, billing receipts, and payments</p>
         </div>
+        {can("feat_transactions_create") && (
         <button
           onClick={() => {
             resetCheckoutForm();
@@ -401,6 +408,7 @@ export default function AdminTransactionsPage() {
           <Plus className="size-4" />
           New Sale (POS)
         </button>
+        )}
       </div>
 
       {/* Filters bar */}
@@ -410,6 +418,7 @@ export default function AdminTransactionsPage() {
           {["All", "Paid", "Unpaid", "Cancelled"].map(tab => (
             <button
               key={tab}
+              aria-pressed={statusFilter === tab}
               onClick={() => setStatusFilter(tab)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === tab
@@ -426,7 +435,8 @@ export default function AdminTransactionsPage() {
         <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
           <input
-            type="text"
+            type="search"
+            aria-label="Search transactions"
             placeholder="Search invoice or patient name"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
@@ -439,37 +449,37 @@ export default function AdminTransactionsPage() {
       <Card className="bg-white border-none shadow-sm rounded-3xl overflow-hidden flex-1 flex flex-col min-h-0 no-print">
         <CardContent className="p-0 flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="overflow-y-auto flex-1">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-gray-50/50 text-gray-400 font-semibold border-b border-gray-100 sticky top-0 bg-white z-10">
-                  <th className="py-4 px-6">Invoice #</th>
-                  <th className="py-4 px-4">Date</th>
-                  <th className="py-4 px-4">Patient</th>
-                  <th className="py-4 px-4">Doctor</th>
-                  <th className="py-4 px-4">Method</th>
-                  <th className="py-4 px-4">Total</th>
-                  <th className="py-4 px-4">Status</th>
-                  <th className="py-4 px-6 text-right">Actions</th>
+            <table role="table" className="mobile-records w-full text-left border-collapse text-sm">
+              <thead role="rowgroup">
+                <tr role="row" className="bg-gray-50/50 text-gray-400 font-semibold border-b border-gray-100 sticky top-0 bg-white z-10">
+                  <th role="columnheader" scope="col" className="py-4 px-6">Invoice #</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Date</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Patient</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Doctor</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Method</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Total</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Status</th>
+                  <th role="columnheader" scope="col" className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50/50">
+              <tbody role="rowgroup" className="divide-y divide-gray-50/50">
                 {loading ? (
-                  <tr>
-                    <td colSpan={8} className="text-center py-12 text-gray-400 font-medium">
+                  <tr role="row">
+                    <td role="cell" colSpan={8} className="text-center py-12 text-gray-400 font-medium">
                       Loading transactions...
                     </td>
                   </tr>
                 ) : filteredTransactions.length > 0 ? (
                   filteredTransactions.map(tx => (
-                    <tr key={tx.id} className="hover:bg-gray-50/30 transition-colors">
+                    <tr role="row" key={tx.id} className="hover:bg-gray-50/30 transition-colors">
                       {/* Code */}
-                      <td className="py-4 px-6 font-bold text-gray-800">{tx.transactionCode}</td>
+                      <td role="cell" className="py-4 px-6 font-bold text-gray-800">{tx.transactionCode}</td>
                       
                       {/* Date */}
-                      <td className="py-4 px-4 text-gray-600 font-medium">{tx.transactionDate}</td>
+                      <td role="cell" data-label="Date" className="py-4 px-4 text-gray-600 font-medium">{tx.transactionDate}</td>
                       
                       {/* Patient */}
-                      <td className="py-4 px-4">
+                      <td role="cell" data-label="Patient" className="py-4 px-4">
                         <div>
                           <p className="font-bold text-gray-800 text-sm">{tx.patient?.fullName}</p>
                           <p className="text-xs text-gray-400">{tx.patient?.phoneNumber}</p>
@@ -477,24 +487,24 @@ export default function AdminTransactionsPage() {
                       </td>
 
                       {/* Doctor */}
-                      <td className="py-4 px-4 text-gray-600 font-medium">
+                      <td role="cell" data-label="Doctor" className="py-4 px-4 text-gray-600 font-medium">
                         {tx.doctor?.name || <span className="text-gray-300">None</span>}
                       </td>
 
                       {/* Payment Method */}
-                      <td className="py-4 px-4">
+                      <td role="cell" data-label="Method" className="py-4 px-4">
                         <span className="text-xs font-semibold text-gray-500 uppercase">
                           {tx.paymentMethod?.replace("_", " ") || "CASH"}
                         </span>
                       </td>
 
                       {/* Total Amount */}
-                      <td className="py-4 px-4 font-bold text-gray-800">
+                      <td role="cell" data-label="Total" className="py-4 px-4 font-bold text-gray-800">
                         {formatCurrency(tx.totalAmount)}
                       </td>
 
                       {/* Status */}
-                      <td className="py-4 px-4">
+                      <td role="cell" data-label="Status" className="py-4 px-4">
                         <span
                           className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                             tx.paymentStatus === "PAID"
@@ -509,7 +519,7 @@ export default function AdminTransactionsPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-4 px-6 text-right">
+                      <td role="cell" data-label="Actions" className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => {
@@ -521,7 +531,7 @@ export default function AdminTransactionsPage() {
                           >
                             <Printer className="size-4" />
                           </button>
-                          {tx.paymentStatus === "UNPAID" && (
+                          {can("feat_transactions_status") && tx.paymentStatus === "UNPAID" && (
                             <>
                               <button
                                 onClick={() => updateStatus(tx.id, "PAID")}
@@ -539,6 +549,7 @@ export default function AdminTransactionsPage() {
                               </button>
                             </>
                           )}
+                          {can("feat_transactions_delete") && (
                           <button
                             onClick={() => deleteTransaction(tx.id)}
                             className="size-8 bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg flex items-center justify-center transition-all cursor-pointer"
@@ -546,13 +557,14 @@ export default function AdminTransactionsPage() {
                           >
                             <Trash2 className="size-4" />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan={8} className="text-center py-12 text-gray-400 font-medium">
+                  <tr role="row">
+                    <td role="cell" colSpan={8} className="text-center py-12 text-gray-400 font-medium">
                       No transactions recorded.
                     </td>
                   </tr>
@@ -565,7 +577,7 @@ export default function AdminTransactionsPage() {
 
       {/* POS Checkout Modal */}
       {isCheckoutOpen && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4 no-print animate-in fade-in duration-200">
+        <AdminDialog label="New sale" onClose={() => setIsCheckoutOpen(false)} className="admin-overlay fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4 no-print animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-xl overflow-hidden border border-gray-100 flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
@@ -912,12 +924,12 @@ export default function AdminTransactionsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
 
       {/* Digital Receipt View Modal */}
       {isReceiptOpen && selectedTransaction && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+        <div className="admin-overlay fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-gray-100 flex flex-col">
             
             {/* Modal Actions Header - hidden on print */}

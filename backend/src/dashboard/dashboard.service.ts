@@ -1,3 +1,4 @@
+import { localDate } from '../local-date';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -35,7 +36,7 @@ export class DashboardService {
 
     const doctors = await this.doctorRepository.find();
     
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDate(today);
     
     const bookings = await this.bookingRepository.find({
       where: { deleted: 0, enabled: 1 },
@@ -127,29 +128,7 @@ export class DashboardService {
     // Today's Appointments (bookings on today's date)
     const todayBookings = bookings.filter(b => b.bookingDate === todayStr);
 
-    const upcomingAppointments = todayBookings.map(b => {
-      const formatTime = (tStr: string) => {
-        if (!tStr) return '';
-        const parts = tStr.split(':');
-        const h = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10);
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const displayH = h % 12 || 12;
-        const displayM = m.toString().padStart(2, '0');
-        return `${displayH}:${displayM} ${ampm}`;
-      };
-
-      const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
-
-      return {
-        id: b.id,
-        patient: b.patient?.fullName || 'Unknown Patient',
-        doctor: b.doctor?.name || 'Unknown Doctor',
-        time: formatTime(b.startTime),
-        treatment: b.service?.name || 'General Checkup',
-        status: capitalize(b.statusCode),
-      };
-    });
+    const upcomingAppointments = this.formatAppointments(todayBookings);
 
     // Clinic Activity: Active Dentists & Occupancy Rate
     const activeDoctors = doctors.filter(d => d.status === 'Active');
@@ -188,7 +167,7 @@ export class DashboardService {
 
     const lastWeekDate = new Date(today);
     lastWeekDate.setDate(today.getDate() - 7);
-    const lastWeekStr = lastWeekDate.toISOString().split('T')[0];
+    const lastWeekStr = localDate(lastWeekDate);
     const lastWeekBookings = bookings.filter(b => b.bookingDate === lastWeekStr && b.statusCode !== 'CANCELLED').length;
 
     let lastWeekOccupancyRate = 0;
@@ -223,6 +202,41 @@ export class DashboardService {
       },
       chartData,
     };
+  }
+
+  async getAppointments() {
+    const bookings = await this.bookingRepository.find({
+      where: { deleted: 0, enabled: 1, bookingDate: localDate(new Date()) },
+      relations: { patient: true, doctor: true, service: true },
+      order: { startTime: 'ASC' },
+    });
+    return this.formatAppointments(bookings);
+  }
+
+  private formatAppointments(bookings: Booking[]) {
+    return bookings.map(b => {
+      const formatTime = (tStr: string) => {
+        if (!tStr) return '';
+        const parts = tStr.split(':');
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const displayH = h % 12 || 12;
+        const displayM = m.toString().padStart(2, '0');
+        return `${displayH}:${displayM} ${ampm}`;
+      };
+
+      const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+
+      return {
+        id: b.id,
+        patient: b.patient?.fullName || 'Unknown Patient',
+        doctor: b.doctor?.name || 'Unknown Doctor',
+        time: formatTime(b.startTime),
+        treatment: b.service?.name || 'General Checkup',
+        status: capitalize(b.statusCode),
+      };
+    });
   }
 
   private getStatsForRange(
@@ -315,7 +329,7 @@ export class DashboardService {
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = localDate(d);
       
       const dayEarnings = transactions
         .filter(tx => tx.paymentStatus === 'PAID' && tx.transactionDate === dateStr)

@@ -1,5 +1,9 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+import { staffFetch } from "@/lib/staff-fetch";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Clock,
@@ -11,8 +15,6 @@ import {
   LogIn,
   LogOut,
   MapIcon,
-  Timer,
-  CalendarCheck,
   Fingerprint,
   CircleDot,
   Navigation,
@@ -43,15 +45,20 @@ type GpsModalMode = "clock-in" | "clock-out" | null;
 type GpsStep = "confirm" | "loading" | "success" | "error";
 
 export default function AdminAbsencePage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string>("");
   const [todayAbsence, setTodayAbsence] = useState<Absence | null>(null);
   const [history, setHistory] = useState<Absence[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Admin specific states
-  const [userEmail, setUserEmail] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"my" | "employee">("my");
+  const { can, user } = useAdminAccess();
+  const userId = user?.id;
+  const userName = user?.name || "User";
+  const canViewOwnHistory = can("feat_absence_history");
+  const canViewEmployeeLogs = can("feat_absence_employee_logs");
+  const [selectedTab, setActiveTab] = useState<"my" | "employee">("my");
+  const activeTab = canViewOwnHistory && canViewEmployeeLogs
+    ? selectedTab
+    : canViewOwnHistory ? "my" : "employee";
   const [allLogs, setAllLogs] = useState<any[]>([]);
   const [allLogsLoading, setAllLogsLoading] = useState<boolean>(false);
   const [logsSearchTerm, setLogsSearchTerm] = useState<string>("");
@@ -80,43 +87,20 @@ export default function AdminAbsencePage() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    // Retrieve userId from local storage token/user
-    const token = localStorage.getItem("admin_token");
-    const userStr = localStorage.getItem("admin_user");
-    if (!token) return;
-
-    try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const payload = JSON.parse(window.atob(base64));
-      setUserId(payload.sub);
-
-      if (userStr) {
-        const u = JSON.parse(userStr);
-        setUserName(u.name || "User");
-        setUserEmail(u.email || "");
-      }
-    } catch (e) {
-      console.error("Error retrieving user info", e);
-    }
-  }, []);
-
   const fetchData = async (uid: string) => {
     setLoading(true);
     try {
       // 1. Fetch today's status
-      const todayRes = await fetch(`http://localhost:3001/absences/today/${uid}`);
+      const todayRes = await staffFetch(`/absences/today/${uid}`);
       if (todayRes.ok) {
-        const todayData = await todayRes.json();
-        setTodayAbsence(todayData || null);
+        const body = await todayRes.text();
+        setTodayAbsence(body ? JSON.parse(body) : null);
       }
 
       // 2. Fetch history
-      const historyRes = await fetch(`http://localhost:3001/absences/history/${uid}`);
-      if (historyRes.ok) {
-        const historyData = await historyRes.json();
-        setHistory(historyData);
+      if (canViewOwnHistory) {
+        const historyRes = await staffFetch(`/absences/history/${uid}`);
+        if (historyRes.ok) setHistory(await historyRes.json());
       }
     } catch (err) {
       console.error("Error fetching absence data:", err);
@@ -129,12 +113,12 @@ export default function AdminAbsencePage() {
     if (userId) {
       fetchData(userId);
     }
-  }, [userId]);
+  }, [userId, canViewOwnHistory]);
 
   const fetchAllLogs = async () => {
     setAllLogsLoading(true);
     try {
-      const res = await fetch("http://localhost:3001/absences");
+      const res = await staffFetch("/absences");
       if (!res.ok) throw new Error("Failed to fetch employee logs");
       const data = await res.json();
       setAllLogs(data);
@@ -146,10 +130,10 @@ export default function AdminAbsencePage() {
   };
 
   useEffect(() => {
-    if (userEmail === "admin@fwdental.com" && activeTab === "employee") {
+    if (canViewEmployeeLogs && activeTab === "employee") {
       fetchAllLogs();
     }
-  }, [userEmail, activeTab]);
+  }, [canViewEmployeeLogs, activeTab]);
 
   const handleClockIn = async (loc: string) => {
     if (!userId) return;
@@ -158,13 +142,12 @@ export default function AdminAbsencePage() {
     setSuccess("");
 
     try {
-      const res = await fetch("http://localhost:3001/absences/clock-in", {
+      const res = await staffFetch("/absences/clock-in", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId,
           location: loc,
         }),
       });
@@ -197,13 +180,12 @@ export default function AdminAbsencePage() {
     setSuccess("");
 
     try {
-      const res = await fetch("http://localhost:3001/absences/clock-out", {
+      const res = await staffFetch("/absences/clock-out", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId,
           location: loc,
         }),
       });
@@ -216,6 +198,7 @@ export default function AdminAbsencePage() {
 
       setSuccess("Successfully clocked out today! Have a great evening!");
       setTodayAbsence(data);
+      window.dispatchEvent(new Event("clock-in-success"));
 
       // Refresh history
       fetchData(userId);
@@ -489,11 +472,11 @@ export default function AdminAbsencePage() {
   }
 
   return (
-    <div className="h-full flex flex-col gap-4 font-sans overflow-hidden min-h-0">
+    <div className="flex flex-col gap-4 font-sans lg:h-full lg:overflow-hidden min-h-0">
 
       {/* ======= GPS CONFIRMATION MODAL ======= */}
       {gpsModalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <AdminDialog label="Attendance location" onClose={gpsStep !== "loading" ? closeGpsModal : undefined} className="admin-overlay fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -679,101 +662,32 @@ export default function AdminAbsencePage() {
               </div>
             )}
           </div>
-        </div>
+        </AdminDialog>
       )}
 
-      {/* Top Row — Live Clock + Quick Stats */}
-      <div className="flex-none grid grid-cols-1 lg:grid-cols-12 gap-4 h-[115px]">
-
-        {/* Welcome + Live Clock Card */}
-        <div className="lg:col-span-5 bg-white rounded-2xl px-5 py-4 border border-gray-100/50 shadow-sm flex items-center justify-between relative overflow-hidden h-full">
-          <div className="space-y-1.5 z-10">
-            <h2 className="text-gray-800 text-sm font-bold">
-              Good {currentTime.getHours() < 12 ? "Morning" : currentTime.getHours() < 17 ? "Afternoon" : "Evening"}, {userName || "there"}! 👋
-            </h2>
-            <div className="space-y-0.5">
-              <p className="text-2xl font-extrabold text-gray-900 tracking-tight leading-none tabular-nums">
-                {liveTimeStr}
-              </p>
-              <p className="text-[10px] text-gray-400 font-bold tracking-wide uppercase">
-                {todayDateStr}
-              </p>
-            </div>
-          </div>
-
-          {/* Clock Illustration */}
-          <div className="relative size-20 shrink-0 flex items-center justify-center mr-1 select-none">
-            <div className="absolute size-18 bg-gradient-to-br from-[#008080] to-[#006666] rounded-xl shadow-sm border border-teal-400/30 transform -rotate-6 flex items-center justify-center">
-              <Fingerprint className="size-9 text-white/80" />
-            </div>
-            <div className="absolute -top-1 -right-1 size-6 bg-white rounded-lg shadow-xs border border-gray-100 flex items-center justify-center">
-              <CircleDot className="size-3.5 text-[#008080]" />
-            </div>
+      {/* Welcome and live clock */}
+      <div className="relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl border border-gray-100/50 bg-white px-4 py-3 shadow-sm shrink-0 lg:min-h-[115px] lg:px-5 lg:py-4">
+        <div className="z-10 min-w-0 space-y-1.5 wrap-break-word">
+          <h2 className="text-gray-800 text-sm font-bold">
+            Good {currentTime.getHours() < 12 ? "Morning" : currentTime.getHours() < 17 ? "Afternoon" : "Evening"}, {userName || "there"}! 👋
+          </h2>
+          <div className="space-y-0.5">
+            <p className="text-2xl font-extrabold text-gray-900 tracking-tight leading-none tabular-nums">
+              {liveTimeStr}
+            </p>
+            <p className="text-[10px] text-gray-400 font-bold tracking-wide uppercase">
+              {todayDateStr}
+            </p>
           </div>
         </div>
 
-        {/* Today Status Card */}
-        <div className="lg:col-span-4 bg-white rounded-2xl px-5 py-4 border border-gray-100/50 shadow-sm flex flex-col justify-between h-full">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 bg-[#e0f5f6] text-[#00a3a6] rounded-full flex items-center justify-center shrink-0">
-              <CalendarCheck className="size-4.5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-bold tracking-wide uppercase truncate">
-                Today&apos;s Status
-              </p>
-              {todayAbsence ? (
-                <p className="text-sm font-extrabold text-gray-800 leading-none mt-1">
-                  Clocked In ✓
-                </p>
-              ) : (
-                <p className="text-sm font-extrabold text-rose-600 leading-none mt-1">
-                  Not Clocked In
-                </p>
-              )}
-            </div>
+        {/* Clock Illustration */}
+        <div aria-hidden="true" className="relative mr-1 flex size-14 shrink-0 items-center justify-center select-none lg:size-20">
+          <div className="absolute size-12 bg-gradient-to-br from-[#008080] to-[#006666] rounded-xl shadow-sm border border-teal-400/30 transform -rotate-6 flex items-center justify-center lg:size-18">
+            <Fingerprint className="size-6 text-white/80 lg:size-9" />
           </div>
-          <div className="flex items-center gap-1.5 leading-none">
-            {todayAbsence ? (
-              getStatusBadge(todayAbsence.status)
-            ) : (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded-full">
-                Pending
-              </span>
-            )}
-            {todayAbsence && (
-              <span className="text-[10px] text-gray-400 font-medium">
-                at {formatTime(todayAbsence.clockIn)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Clock Out Status Card */}
-        <div className="lg:col-span-3 bg-white rounded-2xl px-5 py-4 border border-gray-100/50 shadow-sm flex flex-col justify-between h-full">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 bg-[#fef5e7] text-[#f59e0b] rounded-full flex items-center justify-center shrink-0">
-              <Timer className="size-4.5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] text-gray-400 font-bold tracking-wide uppercase truncate">
-                Clock Out
-              </p>
-              <p className="text-sm font-extrabold text-gray-800 leading-none mt-1">
-                {todayAbsence?.clockOut ? formatTime(todayAbsence.clockOut) : "—"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 leading-none">
-            {todayAbsence?.clockOut ? (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-green-50 text-green-600 rounded-full">
-                Completed
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-50 text-gray-400 rounded-full">
-                {todayAbsence ? "Awaiting" : "N/A"}
-              </span>
-            )}
+          <div className="absolute -top-1 -right-1 size-5 bg-white rounded-lg shadow-xs border border-gray-100 flex items-center justify-center lg:size-6">
+            <CircleDot className="size-3 text-[#008080] lg:size-3.5" />
           </div>
         </div>
       </div>
@@ -782,11 +696,11 @@ export default function AdminAbsencePage() {
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4">
 
         {/* Clock In / Out Action Panel */}
-        <div className="lg:col-span-4 bg-white rounded-2xl p-4 border border-gray-100/50 shadow-sm flex flex-col min-h-0">
+        <section aria-labelledby="record-attendance-heading" className="lg:col-span-4 bg-white rounded-2xl p-4 border border-gray-100/50 shadow-sm flex flex-col min-h-0">
 
           {/* Section Header */}
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 flex-none">
-            <h4 className="text-gray-800 font-bold text-sm flex items-center gap-1.5">
+            <h4 id="record-attendance-heading" className="text-gray-800 font-bold text-sm flex items-center gap-1.5">
               <Clock className="size-4.5 text-[#008080]" />
               Record Attendance
             </h4>
@@ -794,6 +708,51 @@ export default function AdminAbsencePage() {
 
           {/* Action Content */}
           <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-4">
+
+            {/* Today's attendance */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className="size-7 bg-[#008080]/10 text-[#008080] rounded-lg flex items-center justify-center shrink-0">
+                    <LogIn className="size-3.5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500 font-semibold leading-none">Clock In</p>
+                    <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">
+                      {todayAbsence?.clockIn ? formatTime(todayAbsence.clockIn) : "Not clocked in"}
+                    </p>
+                  </div>
+                </div>
+                {todayAbsence?.clockIn && getStatusBadge(todayAbsence.status)}
+              </div>
+
+              {todayAbsence?.clockIn && (
+                <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <div className="size-7 bg-amber-50 text-amber-500 rounded-lg flex items-center justify-center shrink-0">
+                      <LogOut className="size-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-500 font-semibold leading-none">Clock Out</p>
+                      <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">
+                        {todayAbsence.clockOut ? formatTime(todayAbsence.clockOut) : "Awaiting clock-out"}
+                      </p>
+                    </div>
+                  </div>
+                  {todayAbsence.clockOut && <span className="text-[10px] font-bold text-green-700">Completed</span>}
+                </div>
+              )}
+
+              {/* Location info */}
+              {todayAbsence?.clockInLocation && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50/50 rounded-lg">
+                  <MapPin className="size-3 text-gray-400 shrink-0" />
+                  <span className="text-[9px] text-gray-400 font-medium truncate" title={todayAbsence.clockInLocation}>
+                    {todayAbsence.clockInLocation}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {/* Rules Banner — Compact */}
             <div className="bg-[#f0fafa] rounded-xl p-3 flex gap-2.5 border border-[#008080]/10">
@@ -820,51 +779,8 @@ export default function AdminAbsencePage() {
               </div>
             )}
 
-            {/* Clocked-in Summary */}
-            {todayAbsence && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <div className="size-7 bg-[#008080]/10 text-[#008080] rounded-lg flex items-center justify-center shrink-0">
-                      <LogIn className="size-3.5" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-500 font-semibold leading-none">Clock In</p>
-                      <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">{formatTime(todayAbsence.clockIn)}</p>
-                    </div>
-                  </div>
-                  {getStatusBadge(todayAbsence.status)}
-                </div>
-
-                {todayAbsence.clockOut && (
-                  <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl">
-                    <div className="flex items-center gap-2">
-                      <div className="size-7 bg-amber-50 text-amber-500 rounded-lg flex items-center justify-center shrink-0">
-                        <LogOut className="size-3.5" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-500 font-semibold leading-none">Clock Out</p>
-                        <p className="text-sm font-bold text-gray-800 mt-0.5 leading-none">{formatTime(todayAbsence.clockOut)}</p>
-                      </div>
-                    </div>
-                    <span className="text-[8px] font-bold text-green-500 uppercase leading-none">Done</span>
-                  </div>
-                )}
-
-                {/* Location info */}
-                {todayAbsence.clockInLocation && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50/50 rounded-lg">
-                    <MapPin className="size-3 text-gray-400 shrink-0" />
-                    <span className="text-[9px] text-gray-400 font-medium truncate" title={todayAbsence.clockInLocation}>
-                      {todayAbsence.clockInLocation}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Location Input + Action Button */}
-            {(!todayAbsence || !todayAbsence.clockOut) && (
+            {(!todayAbsence ? can("feat_absence_clock_in") : !todayAbsence.clockOut && can("feat_absence_clock_out")) && (
               <div className="space-y-3 mt-auto">
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
@@ -913,21 +829,15 @@ export default function AdminAbsencePage() {
               </div>
             )}
 
-            {/* Completed State */}
-            {todayAbsence && todayAbsence.clockOut && (
-              <div className="text-center p-3 text-xs bg-green-50/50 border border-green-100 rounded-xl text-green-700 font-bold mt-auto">
-                🎉 Attendance completed for today!
-              </div>
-            )}
           </div>
-        </div>
+        </section>
 
         {/* Attendance History Table */}
-        <div className="lg:col-span-8 bg-white rounded-2xl p-4 border border-gray-100/50 shadow-sm flex flex-col min-h-0">
+        {(canViewOwnHistory || canViewEmployeeLogs) && <div className="lg:col-span-8 bg-white rounded-2xl p-4 border border-gray-100/50 shadow-sm flex flex-col min-h-0">
 
           {/* Section Header */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 flex-none">
-            {userEmail === "admin@fwdental.com" ? (
+            {canViewOwnHistory && canViewEmployeeLogs ? (
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setActiveTab("my")}
@@ -954,7 +864,7 @@ export default function AdminAbsencePage() {
             ) : (
               <h4 className="text-gray-800 font-bold text-sm flex items-center gap-1.5">
                 <History className="size-4.5 text-[#008080]" />
-                Attendance History
+                {canViewOwnHistory ? "Attendance History" : "Employee Logs"}
               </h4>
             )}
             <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded-md">
@@ -974,34 +884,34 @@ export default function AdminAbsencePage() {
                   <p className="text-[10px] text-gray-350 font-medium mt-1">Records will appear here after you clock in.</p>
                 </div>
               ) : (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
-                      <th className="pb-2 pr-2">Date</th>
-                      <th className="pb-2 px-2">Clock In</th>
-                      <th className="pb-2 px-2">Clock Out</th>
-                      <th className="pb-2 px-2">Location</th>
-                      <th className="pb-2 pl-2 text-right">Status</th>
+                <table role="table" className="mobile-records w-full text-left border-collapse text-xs">
+                  <thead role="rowgroup">
+                    <tr role="row" className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white">
+                      <th role="columnheader" scope="col" className="pb-2 pr-2">Date</th>
+                      <th role="columnheader" scope="col" className="pb-2 px-2">Clock In</th>
+                      <th role="columnheader" scope="col" className="pb-2 px-2">Clock Out</th>
+                      <th role="columnheader" scope="col" className="pb-2 px-2">Location</th>
+                      <th role="columnheader" scope="col" className="pb-2 pl-2 text-right">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50/50">
+                  <tbody role="rowgroup" className="divide-y divide-gray-50/50">
                     {history.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50/30 transition-colors">
-                        <td className="py-2.5 pr-2 font-bold text-gray-800 whitespace-nowrap">
+                      <tr role="row" key={row.id} className="hover:bg-gray-50/30 transition-colors">
+                        <td role="cell" className="py-2.5 pr-2 font-bold text-gray-800 whitespace-nowrap">
                           {formatDate(row.date)}
                         </td>
-                        <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
+                        <td role="cell" data-label="Clock in" className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
                           {formatTime(row.clockIn)}
                         </td>
-                        <td className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
+                        <td role="cell" data-label="Clock out" className="py-2.5 px-2 text-gray-500 font-semibold tabular-nums">
                           {formatTime(row.clockOut)}
                         </td>
-                        <td className="py-2.5 px-2">
+                        <td role="cell" data-label="Location" className="py-2.5 px-2">
                           <span className="text-[10px] text-gray-400 font-medium truncate max-w-[180px] block" title={row.clockInLocation || ""}>
                             {row.clockInLocation || "-"}
                           </span>
                         </td>
-                        <td className="py-2.5 pl-2 text-right whitespace-nowrap">
+                        <td role="cell" data-label="Status" className="py-2.5 pl-2 text-right whitespace-nowrap">
                           {getStatusBadge(row.status)}
                         </td>
                       </tr>
@@ -1068,27 +978,27 @@ export default function AdminAbsencePage() {
                     <p className="text-[10px] text-gray-350 font-medium mt-1">Try adjusting your filters or search query.</p>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse text-[11px]">
-                    <thead>
-                      <tr className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white z-10">
-                        <th className="pb-2 pr-2">Date</th>
-                        <th className="pb-2 px-2">Employee</th>
-                        <th className="pb-2 px-2">Clock In</th>
-                        <th className="pb-2 px-2">Clock Out</th>
-                        <th className="pb-2 pl-2 text-right">Status</th>
+                  <table role="table" className="mobile-records w-full text-left border-collapse text-[11px]">
+                    <thead role="rowgroup">
+                      <tr role="row" className="text-gray-400 font-semibold border-b border-gray-50 sticky top-0 bg-white z-10">
+                        <th role="columnheader" scope="col" className="pb-2 pr-2">Date</th>
+                        <th role="columnheader" scope="col" className="pb-2 px-2">Employee</th>
+                        <th role="columnheader" scope="col" className="pb-2 px-2">Clock In</th>
+                        <th role="columnheader" scope="col" className="pb-2 px-2">Clock Out</th>
+                        <th role="columnheader" scope="col" className="pb-2 pl-2 text-right">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50/50">
+                    <tbody role="rowgroup" className="divide-y divide-gray-50/50">
                       {filteredLogs.map((row) => (
-                        <tr key={row.id} className="hover:bg-gray-50/30 transition-colors">
-                          <td className="py-2 pr-2 font-bold text-gray-800 whitespace-nowrap">
+                        <tr role="row" key={row.id} className="hover:bg-gray-50/30 transition-colors">
+                          <td role="cell" className="py-2 pr-2 font-bold text-gray-800 whitespace-nowrap">
                             {formatDate(row.date)}
                           </td>
-                          <td className="py-2 px-2 whitespace-nowrap">
+                          <td role="cell" data-label="Employee" className="py-2 px-2 whitespace-nowrap">
                             <div className="font-bold text-gray-800 leading-tight">{row.user?.name || "Unknown User"}</div>
                             <div className="text-[9px] text-gray-400 font-medium leading-none mt-0.5">{row.user?.email || "-"}</div>
                           </td>
-                          <td className="py-2 px-2">
+                          <td role="cell" data-label="Clock in" className="py-2 px-2">
                             <div className="font-bold text-gray-700 tabular-nums">{formatTime(row.clockIn)}</div>
                             {row.clockInLocation && (
                               <div className="text-[9px] text-gray-400 font-medium max-w-[150px] truncate" title={row.clockInLocation}>
@@ -1096,7 +1006,7 @@ export default function AdminAbsencePage() {
                               </div>
                             )}
                           </td>
-                          <td className="py-2 px-2">
+                          <td role="cell" data-label="Clock out" className="py-2 px-2">
                             <div className="font-bold text-gray-700 tabular-nums">{formatTime(row.clockOut)}</div>
                             {row.clockOutLocation && (
                               <div className="text-[9px] text-gray-400 font-medium max-w-[150px] truncate" title={row.clockOutLocation}>
@@ -1104,7 +1014,7 @@ export default function AdminAbsencePage() {
                               </div>
                             )}
                           </td>
-                          <td className="py-2 pl-2 text-right whitespace-nowrap align-middle">
+                          <td role="cell" data-label="Status" className="py-2 pl-2 text-right whitespace-nowrap align-middle">
                             {getStatusBadge(row.status)}
                           </td>
                         </tr>
@@ -1115,7 +1025,7 @@ export default function AdminAbsencePage() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

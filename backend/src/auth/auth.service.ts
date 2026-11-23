@@ -1,177 +1,74 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
+import { createHash, randomBytes } from 'node:crypto';
+import * as bcrypt from 'bcryptjs';
 import { MailService } from '../mail/mail.service';
 import { RolesService } from '../roles/roles.service';
-import * as bcrypt from 'bcryptjs';
-import { LoginDto } from './dto/login.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UsersService } from '../users/users.service';
 
-interface OtpData {
-  otp: string;
-  expiresAt: number;
-  verified?: boolean;
+// Compare missing accounts as well, using the same work factor as new passwords.
+const fallbackHash = bcrypt.hash(randomBytes(32).toString('hex'), 12);
+
+function tokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-
-  // In-memory store for OTPs: email -> { otp, expiresAt }
-  private otpStore = new Map<string, OtpData>();
+  private pendingResetEmails = 0;
 
   constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
-    private readonly mailService: MailService,
-    private readonly rolesService: RolesService,
+    private readonly users: UsersService,
+    private readonly jwt: JwtService,
+    private readonly mail: MailService,
+    private readonly roles: RolesService,
+    private readonly config: ConfigService,
   ) {}
 
-  async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.usersService.findByEmailWithPassword(email);
-    if (user && user.password) {
-      const isMatch = await bcrypt.compare(pass, user.password);
-      if (isMatch) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password, ...result } = user;
-        return result;
-      }
-    }
-    return null;
-  }
-
-  async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
-
-    // Default mock behavior if no password is provided (since frontend has password="password")
-    const validatedUser = await this.validateUser(email, password || '');
-    if (!validatedUser) {
+  async login(email: string, password: string) {
+    const user = await this.users.findByEmailWithPassword(email);
+    const isMatch = await bcrypt.compare(password, user?.password ?? await fallbackHash);
+    if (!user?.password || !isMatch) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const roleCode = validatedUser.roleCode;
-    const role = roleCode ? await this.rolesService.findByCode(roleCode) : null;
-    const permissions = role?.permissions || {};
+    const role = user.roleCode ? await this.roles.findByCode(user.roleCode) : null;
+    if (role?.enabled !== 1 || role.deleted !== 0) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
 
-    const payload = { 
-      email: validatedUser.email, 
-      sub: validatedUser.id,
-      role: roleCode,
-      permissions,
-    };
-    
     return {
-      access_token: this.jwtService.sign(payload),
-      user: {
-        id: validatedUser.id,
-        name: validatedUser.name,
-        email: validatedUser.email,
-        role: roleCode,
-        permissions,
-      },
+      access_token: this.jwt.sign({ sub: user.id, sv: user.sessionVersion }),
     };
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
-    const { email: emailOrPhone } = forgotPasswordDto;
-    const user = await this.usersService.findByEmailOrPhone(emailOrPhone);
-    if (!user) {
-      throw new NotFoundException('User with this email or phone number does not exist');
+  forgotPassword(email: string) {
+    if (this.pendingResetEmails < 8) {
+      this.pendingResetEmails++;
+      void this.sendResetEmail(email)
+        .catch(() => this.logger.warn('A password reset could not be delivered.'))
+        .finally(() => this.pendingResetEmails--);
     }
-
-    // Generate a 4-digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-
-    // Cache it for 5 minutes (keyed by the input identifier)
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-    this.otpStore.set(emailOrPhone, { otp, expiresAt });
-
-    // Send OTP depending on whether it matches phone or email
-    if (user.phone === emailOrPhone) {
-      // For phone number: currently simulate sending it by printing to console logs
-      this.logger.log(
-        `Generated OTP for phone number ${emailOrPhone}: [ ${otp} ] (Expires in 5 minutes)`,
-      );
-    } else {
-      // For email address: send real email using MailService
-      await this.mailService.sendOtpEmail(user.email, otp);
-    }
-
-    return {
-      message: 'OTP has been generated and sent successfully',
-      email: emailOrPhone,
-    };
+    return { message: 'If the email belongs to an eligible account, you will receive a reset link.' };
   }
 
-  async verifyOtp(verifyOtpDto: VerifyOtpDto) {
-    const { email: emailOrPhone, otp } = verifyOtpDto;
+  private async sendResetEmail(email: string) {
+    const token = randomBytes(32).toString('base64url');
+    const recipient = await this.users.issuePasswordReset(email, tokenHash(token));
+    if (!recipient) return;
 
-    const cachedData = this.otpStore.get(emailOrPhone);
-    if (!cachedData) {
-      throw new BadRequestException('No active OTP found for this email or phone number');
-    }
-
-    if (Date.now() > cachedData.expiresAt) {
-      this.otpStore.delete(emailOrPhone);
-      throw new BadRequestException('OTP has expired');
-    }
-
-    if (cachedData.otp !== otp) {
-      throw new BadRequestException('Invalid OTP code');
-    }
-
-    // OTP verified successfully, mark as verified and extend expiry for 5 minutes to allow password reset
-    cachedData.verified = true;
-    cachedData.expiresAt = Date.now() + 5 * 60 * 1000;
-    this.otpStore.set(emailOrPhone, cachedData);
-
-    return {
-      message: 'OTP verified successfully',
-      status: 'verified',
-    };
+    const link = new URL('/admin/login', this.config.get('PUBLIC_APP_URL', 'http://localhost:3000'));
+    // A fragment stays in the browser and out of HTTP access logs and referrers.
+    link.hash = new URLSearchParams({ reset: token }).toString();
+    await this.mail.sendPasswordResetEmail(recipient, link.toString());
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto) {
-    const { email: emailOrPhone, password } = resetPasswordDto;
-
-    const cachedData = this.otpStore.get(emailOrPhone);
-    if (!cachedData || !cachedData.verified) {
-      throw new BadRequestException(
-        'OTP verification is required before resetting password',
-      );
+  async resetPassword(token: string, password: string) {
+    if (!await this.users.resetPassword(tokenHash(token), password)) {
+      throw new BadRequestException('Reset link is invalid or has expired. Request a new link.');
     }
-
-    if (Date.now() > cachedData.expiresAt) {
-      this.otpStore.delete(emailOrPhone);
-      throw new BadRequestException(
-        'Password reset session has expired. Please request a new OTP.',
-      );
-    }
-
-    const user = await this.usersService.findByEmailOrPhone(emailOrPhone);
-    if (!user) {
-      throw new NotFoundException('User with this email or phone number does not exist');
-    }
-
-    if (!password) {
-      throw new BadRequestException('New password is required');
-    }
-
-    await this.usersService.updatePassword(user.email, password);
-
-    // Clean up OTP store after successful password reset
-    this.otpStore.delete(emailOrPhone);
-
-    return {
-      message: 'Password reset successfully',
-    };
+    return { message: 'Password reset successfully' };
   }
 }

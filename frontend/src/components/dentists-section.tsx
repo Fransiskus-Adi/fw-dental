@@ -45,7 +45,6 @@ export default function DentistsSection() {
         <div className="flex items-start justify-between mb-10">
           <h2
             className="text-5xl lg:text-7xl font-medium tracking-tight"
-            style={{ fontFamily: "var(--font-playfair)" }}
           >
             Meet The Dentists
           </h2>

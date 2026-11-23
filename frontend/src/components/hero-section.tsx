@@ -22,23 +22,20 @@ export default function HeroSection() {
           <div className="flex items-start justify-between">
             {/* Headline area */}
             <div className="max-w-4xl">
-              <h1 className="font-[var(--font-playfair)] leading-[0.95] tracking-[-0.03em]">
+              <h1 className="leading-[0.95] tracking-[-0.03em]">
                 <span
                   className="block text-[clamp(3.5rem,8vw,8rem)] font-medium text-black"
-                  style={{ fontFamily: "var(--font-playfair)" }}
                 >
                   A Better Way
                 </span>
                 <span className="block text-[clamp(3.5rem,8vw,8rem)] font-medium">
                   <span
                     className="text-teal-600"
-                    style={{ fontFamily: "var(--font-playfair)" }}
                   >
                     to
                   </span>{" "}
                   <span
                     className="text-black"
-                    style={{ fontFamily: "var(--font-playfair)" }}
                   >
                     Smile
                   </span>

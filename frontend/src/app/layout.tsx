@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Playfair_Display } from "next/font/google";
+import { PwaStatus } from "@/components/pwa-status";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -17,7 +18,11 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "FW Dental",
   description: "A Better Way to Smile - With our team of experienced dentists and state-of-the-art technology, we deliver comprehensive treatments in a comfortable and welcoming environment.",
+  appleWebApp: { capable: true, title: "FW Dental" },
+  icons: { apple: "/icons/clinic-192.png" },
 };
+
+export const viewport: Viewport = { viewportFit: "cover", interactiveWidget: "resizes-content", themeColor: "#008080" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -25,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${dmSans.variable} ${playfair.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col"><PwaStatus />{children}</body>
     </html>
   );
 }

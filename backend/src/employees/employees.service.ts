@@ -27,7 +27,7 @@ export class EmployeesService {
     email: string,
     password?: string,
     phone?: string,
-    roleCode?: string,
+    roleCode?: string | null,
   ): Promise<Employee> {
     const existing = await this.employeesRepository.findByEmail(email);
     if (existing) {
@@ -49,7 +49,7 @@ export class EmployeesService {
       name,
       email,
       phone,
-      roleCode,
+      roleCode: roleCode ?? null,
     });
   }
 
@@ -59,7 +59,7 @@ export class EmployeesService {
     email: string,
     password?: string,
     phone?: string,
-    roleCode?: string,
+    roleCode?: string | null,
   ): Promise<Employee> {
     const employee = await this.employeesRepository.findById(id);
     if (!employee) {
@@ -80,7 +80,7 @@ export class EmployeesService {
     employee.name = name;
     employee.email = email;
     employee.phone = phone;
-    employee.roleCode = roleCode;
+    if (roleCode !== undefined) employee.roleCode = roleCode;
 
     return this.employeesRepository.createAndSave(employee);
   }

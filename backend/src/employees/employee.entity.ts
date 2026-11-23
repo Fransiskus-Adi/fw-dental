@@ -20,8 +20,8 @@ export class Employee {
   @Column({ nullable: true })
   phone?: string;
 
-  @Column({ name: 'role_code', nullable: true })
-  roleCode?: string;
+  @Column({ name: 'role_code', type: 'varchar', nullable: true })
+  roleCode?: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

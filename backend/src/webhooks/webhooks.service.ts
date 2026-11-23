@@ -1,47 +1,41 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventLogService } from '../logging/event-log.service';
+
+type NotificationEvent = 'BOOKING_CREATED' | 'CLOCK_IN_REMINDER' | 'CLOCK_OUT_REMINDER';
 
 @Injectable()
 export class WebhooksService {
-  private readonly logger = new Logger(WebhooksService.name);
-  private webhookUrl: string;
+  constructor(
+    private readonly config: ConfigService,
+    private readonly events: EventLogService,
+  ) {}
 
-  constructor(private readonly configService: ConfigService) {
-    this.webhookUrl = this.configService.get<string>(
-      'WEBHOOK_URL',
-      'http://localhost:3000/api/webhooks/notifications',
-    );
-  }
+  async triggerWebhook(event: NotificationEvent): Promise<boolean> {
+    const secret = this.config.get<string>('NOTIFICATION_WEBHOOK_SECRET');
+    if (!secret) return false;
+    const url = this.config.get('WEBHOOK_URL', 'http://127.0.0.1:3000/api/webhooks/notifications');
 
-  async triggerWebhook(event: string, payload: any): Promise<boolean> {
     try {
-      this.logger.log(`Triggering webhook for event: ${event} to URL: ${this.webhookUrl}`);
-      
-      const response = await fetch(this.webhookUrl, {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          event,
-          payload,
-          timestamp: new Date().toISOString(),
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ event }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(5000),
       });
-
       if (!response.ok) {
-        this.logger.error(
-          `Webhook failed with status: ${response.status} ${response.statusText}`,
-        );
+        this.events.record({ event: 'webhook.delivery_failed', level: 'error', httpStatus: response.status });
         return false;
       }
-
-      this.logger.log(`Webhook triggered successfully for event: ${event}`);
+      this.events.record({ event: 'webhook.sent', level: 'info' });
       return true;
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to trigger webhook for event ${event}: ${error.message}`,
-      );
+    } catch (error) {
+      this.events.record({
+        event: 'webhook.delivery_failed',
+        level: 'error',
+        errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+      });
       return false;
     }
   }

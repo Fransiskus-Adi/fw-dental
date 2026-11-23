@@ -1,22 +1,19 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+import { staffFetch } from "@/lib/staff-fetch";
+
 import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
-  Mail,
-  Phone,
-  Clock,
-  Star,
   X,
-  Stethoscope,
-  Edit2,
-  Trash2,
-  Loader2,
-  CalendarDays
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { MasterDataTable, RecordActions } from "./master-data-table";
 import { CustomSelect } from "@/components/ui/custom-select";
 
 interface Doctor {
@@ -34,6 +31,7 @@ interface Doctor {
 }
 
 export default function DoctorsTab() {
+  const { can } = useAdminAccess();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,7 +59,7 @@ export default function DoctorsTab() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:3001/doctors");
+      const res = await staffFetch("/doctors");
       if (!res.ok) throw new Error("Failed to load doctors");
       const data = await res.json();
       setDoctors(data);
@@ -132,11 +130,11 @@ export default function DoctorsTab() {
       };
 
       const url = modalMode === "add" 
-        ? "http://localhost:3001/doctors" 
-        : `http://localhost:3001/doctors/${selectedId}`;
+        ? "/doctors"
+        : `/doctors/${selectedId}`;
       const method = modalMode === "add" ? "POST" : "PUT";
 
-      const res = await fetch(url, {
+      const res = await staffFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -159,7 +157,7 @@ export default function DoctorsTab() {
   const toggleStatus = async (doc: Doctor) => {
     const newStatus = doc.status === "Active" ? "On Leave" : "Active";
     try {
-      const res = await fetch(`http://localhost:3001/doctors/${doc.id}`, {
+      const res = await staffFetch(`/doctors/${doc.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -179,7 +177,7 @@ export default function DoctorsTab() {
     if (!confirm(`Are you sure you want to delete doctor "${docName}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:3001/doctors/${id}`, {
+      const res = await staffFetch(`/doctors/${id}`, {
         method: "DELETE",
       });
 
@@ -214,6 +212,7 @@ export default function DoctorsTab() {
           <span className="text-xs text-gray-400 font-bold select-none whitespace-nowrap">
             Total Doctors: {doctors.length}
           </span>
+          {can("feat_doctors_write") && (
           <button
             onClick={handleOpenAddModal}
             className="h-10 bg-[#008080] hover:bg-[#006666] text-white font-semibold rounded-xl px-4 transition-all shadow-md shadow-teal-100 flex items-center gap-2 text-sm select-none cursor-pointer"
@@ -221,124 +220,65 @@ export default function DoctorsTab() {
             <Plus className="size-4" />
             Add Doctor
           </button>
+          )}
         </div>
       </div>
 
-      {/* Main Listing View */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-gray-100">
-          <Loader2 className="size-8 text-[#008080] animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="text-center py-12 bg-white rounded-3xl border border-red-100 text-red-500 font-medium">
-          {error}. <button onClick={fetchDoctors} className="underline font-bold text-[#008080]">Retry</button>
-        </div>
-      ) : filteredDoctors.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDoctors.map(doc => (
-            <Card
-              key={doc.id}
-              className="bg-white border-none shadow-xs rounded-3xl overflow-hidden hover:shadow-md transition-shadow relative group"
-            >
-              <CardContent className="p-6 space-y-5">
-                {/* Header Profile */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="size-12 rounded-2xl bg-[#008080]/10 border border-[#008080]/20 flex items-center justify-center text-[#008080]">
-                      <Stethoscope className="size-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-gray-800 text-base">{doc.name}</h4>
-                      <p className="text-xs text-[#008080] font-semibold mt-0.5">{doc.specialty}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Status toggle button */}
-                  <button
-                    onClick={() => toggleStatus(doc)}
-                    className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all select-none cursor-pointer ${
-                      doc.status === "Active"
-                        ? "bg-green-50 text-green-600 hover:bg-green-100"
-                        : "bg-red-50 text-red-500 hover:bg-red-100"
-                    }`}
-                    title="Click to toggle status"
-                  >
-                    {doc.status}
-                  </button>
-                </div>
-
-                {/* Rating / Appts */}
-                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50/50 rounded-2xl">
-                  <div className="text-center border-r border-gray-100">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Appointments</p>
-                    <p className="text-lg font-bold text-gray-800 mt-1">{doc.appointmentsCount}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Rating</p>
-                    <p className="text-lg font-bold text-gray-800 mt-1 flex items-center justify-center gap-1">
-                      {parseFloat(doc.rating.toString()).toFixed(1)}
-                      <Star className="size-4 fill-yellow-400 text-yellow-400" />
-                    </p>
-                  </div>
-                </div>
-
-                {/* Details List */}
-                <div className="space-y-2.5 text-xs font-semibold text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <Clock className="size-4 text-gray-400 shrink-0" />
-                    <span>Shift: {formatTimeDisplay(doc.shiftStart)} - {formatTimeDisplay(doc.shiftEnd)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="size-4 text-gray-400 shrink-0" />
-                    <span className="truncate">
-                      Days: {doc.days && doc.days.length > 0
-                        ? doc.days.map(d => d.slice(0, 3)).join(", ")
-                        : "None"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="size-4 text-gray-400 shrink-0" />
-                    <span className="truncate">{doc.email}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="size-4 text-gray-400 shrink-0" />
-                    <span>{doc.phone}</span>
-                  </div>
-                </div>
-
-                {/* Actions Panel */}
-                <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
-                  <span className="text-xs text-gray-400 font-semibold">Available for booking</span>
-                  <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleOpenEditModal(doc)}
-                      className="size-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Edit Doctor"
-                    >
-                      <Edit2 className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(doc.id, doc.name)}
-                      className="size-8 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Delete Doctor"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 text-gray-400 font-medium">
-          No doctors found.
-        </div>
-      )}
+      <MasterDataTable
+        label="Doctors"
+        columns={["Doctor", "Contact", "Schedule", "Appointments", "Rating", "Status"]}
+        loading={loading}
+        error={error}
+        empty={filteredDoctors.length === 0}
+        onRetry={fetchDoctors}
+      >
+        {filteredDoctors.map(doc => (
+          <tr role="row" key={doc.id} className="hover:bg-gray-50/60">
+            <th role="rowheader" scope="row" className="min-w-40 text-gray-800">
+              <div className="font-semibold">{doc.name}</div>
+              <div className="mt-0.5 text-xs font-medium text-gray-500">{doc.specialty}</div>
+            </th>
+            <td role="cell" data-label="Contact" className="whitespace-nowrap">
+              <div>{doc.email || "—"}</div>
+              {doc.phone && <div className="mt-0.5 text-xs text-gray-500">{doc.phone}</div>}
+            </td>
+            <td role="cell" data-label="Schedule" className="whitespace-nowrap">
+              <div>{formatTimeDisplay(doc.shiftStart)} – {formatTimeDisplay(doc.shiftEnd)}</div>
+              <div className="mt-0.5 text-xs text-gray-500">
+                {doc.days?.length ? doc.days.map(day => day.slice(0, 3)).join(", ") : "No days set"}
+              </div>
+            </td>
+            <td role="cell" data-label="Appointments" className="tabular-nums">{doc.appointmentsCount ?? "—"}</td>
+            <td role="cell" data-label="Rating" className="tabular-nums">{doc.rating == null ? "—" : Number(doc.rating).toFixed(1)}</td>
+            <td role="cell" data-label="Status">
+              <button
+                type="button"
+                disabled={!can("feat_doctors_write")}
+                  onClick={() => toggleStatus(doc)}
+                aria-label={`${doc.status}. Change status for ${doc.name}`}
+                className={`cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  doc.status === "Active"
+                    ? "bg-green-50 text-green-700 hover:bg-green-100"
+                    : "bg-red-50 text-red-700 hover:bg-red-100"
+                }`}
+              >
+                {doc.status}
+              </button>
+            </td>
+            <td role="cell" data-label="Actions">
+              <RecordActions
+                name={doc.name}
+                onEdit={can("feat_doctors_write") ? () => handleOpenEditModal(doc) : undefined}
+                onDelete={can("feat_doctors_delete") ? () => handleDelete(doc.id, doc.name) : undefined}
+              />
+            </td>
+          </tr>
+        ))}
+      </MasterDataTable>
 
       {/* Add / Edit Doctor Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Dentist details" onClose={() => setIsModalOpen(false)} className="admin-overlay fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-800">
@@ -497,7 +437,7 @@ export default function DoctorsTab() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
     </div>
   );

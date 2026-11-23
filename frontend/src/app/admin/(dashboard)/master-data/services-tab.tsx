@@ -1,20 +1,19 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+import { staffFetch } from "@/lib/staff-fetch";
+
 import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
-  Clock,
-  DollarSign,
-  FileText,
   X,
-  Edit2,
-  Trash2,
-  Loader2,
-  Sparkles
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { MasterDataTable, RecordActions } from "./master-data-table";
 
 interface Service {
   id: string;
@@ -33,6 +32,7 @@ interface Service {
 }
 
 export default function ServicesTab() {
+  const { can } = useAdminAccess();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,7 +61,7 @@ export default function ServicesTab() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:3001/services");
+      const res = await staffFetch("/services/staff");
       if (!res.ok) throw new Error("Failed to load services");
       const data = await res.json();
       setServices(data);
@@ -122,11 +122,11 @@ export default function ServicesTab() {
       if (priceTo) payload.priceTo = Number(priceTo);
 
       const url = modalMode === "add" 
-        ? "http://localhost:3001/services" 
-        : `http://localhost:3001/services/${selectedId}`;
+        ? "/services"
+        : `/services/${selectedId}`;
       const method = modalMode === "add" ? "POST" : "PUT";
 
-      const res = await fetch(url, {
+      const res = await staffFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -150,7 +150,7 @@ export default function ServicesTab() {
     if (!confirm(`Are you sure you want to delete service "${srvName}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:3001/services/${id}`, {
+      const res = await staffFetch(`/services/${id}`, {
         method: "DELETE",
       });
 
@@ -194,6 +194,7 @@ export default function ServicesTab() {
           <span className="text-xs text-gray-400 font-bold select-none whitespace-nowrap">
             Total Services: {services.length}
           </span>
+          {can("feat_services_write") && (
           <button
             onClick={handleOpenAddModal}
             className="h-10 bg-[#008080] hover:bg-[#006666] text-white font-semibold rounded-xl px-4 transition-all shadow-md shadow-teal-100 flex items-center gap-2 text-sm select-none cursor-pointer"
@@ -201,100 +202,51 @@ export default function ServicesTab() {
             <Plus className="size-4" />
             Add Service
           </button>
+          )}
         </div>
       </div>
 
-      {/* Main Listing View */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-gray-100">
-          <Loader2 className="size-8 text-[#008080] animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="text-center py-12 bg-white rounded-3xl border border-red-100 text-red-500 font-medium">
-          {error}. <button onClick={fetchServices} className="underline font-bold text-[#008080]">Retry</button>
-        </div>
-      ) : filteredServices.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredServices.map(srv => (
-            <Card
-              key={srv.id}
-              className="bg-white border-none shadow-xs rounded-3xl overflow-hidden hover:shadow-md transition-shadow relative group"
-            >
-              <CardContent className="p-6 space-y-4">
-                {/* Header Info */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="size-12 rounded-2xl bg-[#008080]/10 border border-[#008080]/20 flex items-center justify-center text-[#008080]">
-                      <Sparkles className="size-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-gray-800 text-base">{srv.name}</h4>
-                      <p className="text-[10px] text-[#008080] font-extrabold uppercase tracking-wider mt-0.5">{srv.code}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleOpenEditModal(srv)}
-                      className="size-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Edit Service"
-                    >
-                      <Edit2 className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(srv.id, srv.name)}
-                      className="size-8 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Delete Service"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Short Description */}
-                {srv.shortDescription && (
-                  <p className="text-xs text-gray-400 font-medium line-clamp-2">
-                    {srv.shortDescription}
-                  </p>
-                )}
-
-                {/* Details list */}
-                <div className="space-y-2.5 text-xs font-semibold text-gray-500 pt-2 border-t border-gray-50">
-                  <div className="flex items-center gap-2">
-                    <Clock className="size-4 text-gray-400 shrink-0" />
-                    <span>Duration: {srv.durationMinutes} mins</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="size-4 text-gray-400 shrink-0" />
-                    <span>
-                      {srv.priceFrom || srv.priceTo ? (
-                        <>
-                          {srv.priceFrom ? formatPrice(srv.priceFrom) : "0"} - {srv.priceTo ? formatPrice(srv.priceTo) : "Up"}
-                        </>
-                      ) : (
-                        "Free / Quote Required"
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="size-4 text-gray-400 shrink-0" />
-                    <span>Order: {srv.displayOrder}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 text-gray-400 font-medium">
-          No services found.
-        </div>
-      )}
+      <MasterDataTable
+        label="Services"
+        columns={["Service", "Code", "Description", "Duration", "Price", "Display order", "Status"]}
+        loading={loading}
+        error={error}
+        empty={filteredServices.length === 0}
+        onRetry={fetchServices}
+      >
+        {filteredServices.map(srv => (
+          <tr role="row" key={srv.id} className="hover:bg-gray-50/60">
+            <th role="rowheader" scope="row" className="min-w-36 font-semibold text-gray-800">{srv.name}</th>
+            <td role="cell" data-label="Code"><code className="whitespace-nowrap">{srv.code}</code></td>
+            <td role="cell" data-label="Description" className="min-w-40">{srv.shortDescription || "—"}</td>
+            <td role="cell" data-label="Duration" className="whitespace-nowrap tabular-nums">{srv.durationMinutes} min</td>
+            <td role="cell" data-label="Price" className="whitespace-nowrap tabular-nums">
+              {srv.priceFrom != null || srv.priceTo != null
+                ? `${formatPrice(srv.priceFrom ?? 0)} – ${srv.priceTo == null ? "Up" : formatPrice(srv.priceTo)}`
+                : "Free / Quote Required"}
+            </td>
+            <td role="cell" data-label="Display order" className="tabular-nums">{srv.displayOrder}</td>
+            <td role="cell" data-label="Status">
+              <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
+                srv.enabled === 1 ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"
+              }`}>
+                {srv.enabled === 1 ? "Enabled" : "Disabled"}
+              </span>
+            </td>
+            <td role="cell" data-label="Actions">
+              <RecordActions
+                name={srv.name}
+                onEdit={can("feat_services_write") ? () => handleOpenEditModal(srv) : undefined}
+                onDelete={can("feat_services_delete") ? () => handleDelete(srv.id, srv.name) : undefined}
+              />
+            </td>
+          </tr>
+        ))}
+      </MasterDataTable>
 
       {/* Add / Edit Service Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Service details" onClose={() => setIsModalOpen(false)} className="admin-overlay fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-800">
@@ -436,7 +388,7 @@ export default function ServicesTab() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
     </div>
   );

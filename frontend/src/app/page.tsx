@@ -8,7 +8,7 @@ import Footer from "@/components/footer";
 
 export default function Home() {
   return (
-    <>
+    <div className="company-profile">
       <Navbar />
       <main>
         <HeroSection />
@@ -18,6 +18,6 @@ export default function Home() {
         <BookingSection />
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

@@ -47,7 +47,7 @@ export class DoctorsService {
     const name = doctorData.name || '';
     const email = doctorData.email || '';
     const phone = doctorData.phone;
-    const user = await this.usersService.create(name, email, 'password', phone);
+    const user = await this.usersService.create(name, email, undefined, phone);
 
     // Save doctor using the same ID
     doctorData.id = user.id;
@@ -98,7 +98,7 @@ export class DoctorsService {
       await this.usersService.create(
         updatedName,
         updatedEmail,
-        'password',
+        undefined,
         updatedPhone,
       );
     }

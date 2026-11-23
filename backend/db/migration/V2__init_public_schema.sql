@@ -1,4 +1,5 @@
 CREATE SCHEMA IF NOT EXISTS public;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- =========================================================
 -- PUBLIC SCHEMA
@@ -46,7 +47,7 @@ CREATE TABLE public.clinics (
 CREATE TABLE public.doctors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    clinic_id UUID NOT NULL,
+    clinic_id UUID,
 
     code VARCHAR(50) NOT NULL UNIQUE,
 
@@ -59,6 +60,14 @@ CREATE TABLE public.doctors (
 
     description TEXT,
     profile_image_url TEXT,
+    email VARCHAR(255),
+    phone VARCHAR(30),
+    shift_start VARCHAR(10) DEFAULT '09:00',
+    shift_end VARCHAR(10) DEFAULT '17:00',
+    status VARCHAR(50) DEFAULT 'Active',
+    appointments_count INTEGER DEFAULT 0,
+    rating NUMERIC(3,1) DEFAULT 5.0,
+    days TEXT,
 
     enabled SMALLINT NOT NULL DEFAULT 1,
     deleted SMALLINT NOT NULL DEFAULT 0,
@@ -78,7 +87,7 @@ CREATE TABLE public.doctors (
 CREATE TABLE public.services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    clinic_id UUID NOT NULL,
+    clinic_id UUID,
 
     code VARCHAR(50) NOT NULL UNIQUE,
 
@@ -247,7 +256,7 @@ CREATE TABLE public.bookings (
 
     booking_code VARCHAR(50) NOT NULL UNIQUE,
 
-    clinic_id UUID NOT NULL,
+    clinic_id UUID,
 
     patient_id UUID NOT NULL,
     doctor_id UUID NOT NULL,
@@ -281,7 +290,11 @@ CREATE TABLE public.bookings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_by UUID,
 
-    CHECK (end_time > start_time)
+    CHECK (end_time > start_time),
+    CONSTRAINT bookings_doctor_time_exclusion EXCLUDE USING gist (
+        doctor_id WITH =,
+        tsrange(booking_date + start_time, booking_date + end_time, '[)') WITH &&
+    ) WHERE (enabled = 1 AND deleted = 0 AND status_code <> 'CANCELLED')
 );
 
 
@@ -468,6 +481,89 @@ CREATE TABLE public.app_settings (
     UNIQUE (clinic_id, setting_code)
 );
 
+CREATE UNIQUE INDEX app_settings_global_portal_config
+    ON public.app_settings (setting_code)
+    WHERE clinic_id IS NULL AND setting_code = 'PORTAL_CONFIG';
+
+-- Create public.employees table
+CREATE TABLE public.employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    phone VARCHAR(30),
+    role_code VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =========================================================
+-- TRANSACTIONS
+-- =========================================================
+
+CREATE TABLE public.transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    transaction_code VARCHAR(50) NOT NULL UNIQUE,
+
+    clinic_id UUID,
+    booking_id UUID,
+    patient_id UUID NOT NULL,
+    doctor_id UUID,
+
+    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+
+    payment_method VARCHAR(50), -- CASH, DEBIT_CARD, CREDIT_CARD, QRIS, BANK_TRANSFER
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'UNPAID', -- UNPAID, PAID, CANCELLED
+
+    transaction_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    notes TEXT,
+
+    enabled SMALLINT NOT NULL DEFAULT 1,
+    deleted SMALLINT NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by UUID,
+
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by UUID
+);
+
+-- =========================================================
+-- TRANSACTION ITEMS
+-- =========================================================
+
+CREATE TABLE public.transaction_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    transaction_id UUID NOT NULL,
+    service_id UUID, -- Optional: links to a registered service/treatment
+
+    name VARCHAR(150) NOT NULL,
+    price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    total_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create public.absences table
+CREATE TABLE public.absences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    clock_in TIMESTAMPTZ,
+    clock_out TIMESTAMPTZ,
+    clock_in_location VARCHAR(255),
+    clock_out_location VARCHAR(255),
+    status VARCHAR(50) NOT NULL, -- 'PRESENT' or 'LATE'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, date)
+);
 
 -- =========================================================
 -- INDEXES
@@ -535,3 +631,12 @@ CREATE INDEX idx_company_contents_clinic
 
 CREATE INDEX idx_contact_inquiries_clinic
     ON public.contact_inquiries(clinic_id);
+
+CREATE INDEX idx_employees_email ON public.employees(email);
+
+CREATE INDEX idx_transactions_patient ON public.transactions(patient_id);
+CREATE INDEX idx_transactions_booking ON public.transactions(booking_id);
+CREATE INDEX idx_transactions_date ON public.transactions(transaction_date);
+CREATE INDEX idx_transaction_items_tx ON public.transaction_items(transaction_id);
+
+CREATE INDEX idx_absences_user_date ON public.absences(user_id, date);

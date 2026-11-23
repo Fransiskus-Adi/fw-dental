@@ -128,3 +128,126 @@
     @apply font-sans;
   }
 }
+
+.admin-header {
+  padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+}
+
+.admin-content {
+  padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+
+.admin-drawer {
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+
+.admin-notifications {
+  position: fixed;
+  right: max(0.75rem, env(safe-area-inset-right));
+  width: min(20rem, calc(100vw - 1.5rem));
+}
+
+.admin-toasts {
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  right: max(1rem, env(safe-area-inset-right));
+  width: calc(100% - 2rem);
+}
+
+.offline-banner {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+.company-profile {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.public-navigation { padding-top: env(safe-area-inset-top); }
+.admin-login { padding: max(2rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+
+dialog.admin-overlay {
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  color: inherit;
+}
+
+dialog.admin-overlay:not([open]) { display: none; }
+dialog.admin-overlay > div:not(.absolute) { max-height: 100%; overflow-y: auto; }
+body:has(dialog.admin-overlay[open]), body:has(.admin-drawer[open]) { overflow: hidden; }
+
+@media screen and (min-width: 64rem) {
+  .admin-shell { height: 100dvh; overflow: hidden; }
+  .admin-header { padding-inline: 2rem; }
+  .admin-content { overflow: auto; padding: 1.5rem; }
+  .admin-notifications { position: absolute; right: 0; }
+}
+
+@media screen and (max-width: 63.999rem) {
+  body:has(.admin-overlay), body:has(.admin-drawer[open]) { overflow: hidden; }
+
+  .admin-shell:has(.admin-bottom-nav) {
+    --admin-bottom-nav-height: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+  }
+  .admin-bottom-nav {
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .admin-shell:has(.admin-bottom-nav) .admin-content {
+    padding-bottom: calc(var(--admin-bottom-nav-height) + 1rem);
+  }
+  .admin-shell:has(.admin-bottom-nav) .admin-toasts {
+    bottom: calc(var(--admin-bottom-nav-height) + 0.75rem);
+  }
+
+  .admin-overlay { align-items: stretch; padding: 0; }
+  .admin-overlay > div:not(.absolute) {
+    width: 100%;
+    max-width: none;
+    max-height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 0;
+  }
+  .admin-overlay form { max-height: none; min-height: 0; }
+  .admin-shell :is(input, select, textarea), .admin-login input, #location :is(input, select, textarea) { font-size: 1rem; }
+  .admin-shell button, #location button { min-height: 44px; }
+
+  .mobile-records, .mobile-records tbody { display: block; }
+  .mobile-records thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .mobile-records tbody tr { display: grid; padding: 0.75rem; }
+  .mobile-records tbody :is(td, th) {
+    min-width: 0;
+    padding: 0.3rem 0;
+    text-align: start;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .mobile-records td[data-label] {
+    display: grid;
+    grid-template-columns: minmax(0, 6rem) minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+  .mobile-records td[data-label]::before {
+    content: attr(data-label) / "";
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .mobile-records td[data-label]:not([data-label="Actions"]) > * { grid-column: 2; min-width: 0; }
+  .mobile-records td[data-label="Actions"] { display: block; }
+  .mobile-records td[data-label="Actions"]::before { content: none; }
+  .mobile-records td[data-label="Actions"] > div { flex-wrap: wrap; justify-content: flex-start; }
+  .mobile-records td[data-label="Actions"] button { min-width: 44px; }
+}

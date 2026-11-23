@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import * as bcrypt from 'bcryptjs';
+import { hashNewPassword } from '../auth/password';
 import { User } from './user.entity';
 import { UsersRepository } from './users.repository';
 
@@ -23,8 +23,8 @@ export class UsersService {
     return this.usersRepository.findByEmail(email);
   }
 
-  async findByEmailOrPhone(emailOrPhone: string): Promise<User | null> {
-    return this.usersRepository.findByEmailOrPhone(emailOrPhone);
+  async findForSession(id: string): Promise<User | null> {
+    return this.usersRepository.findForSession(id);
   }
 
   async findByEmailWithPassword(email: string): Promise<User | null> {
@@ -36,26 +36,19 @@ export class UsersService {
     email: string,
     password?: string,
     phone?: string,
-    roleCode?: string,
+    roleCode?: string | null,
   ): Promise<User> {
     const existing = await this.usersRepository.findByEmail(email);
     if (existing) {
       throw new ConflictException('Email already exists');
     }
 
-    let hashedPassword: string | undefined = undefined;
-    if (password) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(password, salt);
-    }
+    const hashedPassword = password ? await hashNewPassword(password) : undefined;
 
-    return this.usersRepository.createAndSave({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      roleCode,
-    });
+    return this.usersRepository.createAndSave(
+      { name, email, password: hashedPassword, phone },
+      { code: roleCode ?? undefined },
+    );
   }
 
   async update(
@@ -64,7 +57,7 @@ export class UsersService {
     email: string,
     password?: string,
     phone?: string,
-    roleCode?: string,
+    roleCode?: string | null,
   ): Promise<User> {
     const user = await this.usersRepository.findById(id);
     if (!user) {
@@ -81,24 +74,24 @@ export class UsersService {
     user.name = name;
     user.email = email;
     user.phone = phone;
-    user.roleCode = roleCode;
 
     if (password) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(password, salt);
+      user.password = await hashNewPassword(password);
     }
 
-    return this.usersRepository.createAndSave(user);
+    return this.usersRepository.createAndSave(
+      user,
+      roleCode === undefined ? undefined : { code: roleCode || undefined },
+    );
   }
 
-  async updatePassword(email: string, password: string): Promise<void> {
-    const user = await this.usersRepository.findByEmailWithPassword(email);
-    if (!user) {
-      throw new ConflictException('User not found');
-    }
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-    await this.usersRepository.createAndSave(user);
+  issuePasswordReset(email: string, hash: string) {
+    return this.usersRepository.issuePasswordReset(email, hash);
+  }
+
+  async resetPassword(hash: string, password: string): Promise<boolean> {
+    if (!await this.usersRepository.hasPasswordReset(hash)) return false;
+    return this.usersRepository.consumePasswordReset(hash, await hashNewPassword(password));
   }
 
   async delete(id: string): Promise<void> {

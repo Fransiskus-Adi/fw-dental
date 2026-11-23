@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { getAdminPagePermission, needsClockIn } from "@/lib/admin-access";
+import type { AdminSession } from "@/lib/admin-access";
+import { AdminAccessContext } from "@/lib/admin-access-context";
+import { signOutStaff, staffFetch } from "@/lib/staff-fetch";
+
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -20,8 +25,11 @@ import {
   Sparkles,
   Receipt,
   UserCheck,
+  Menu,
   X
 } from "lucide-react";
+
+const mobilePrimaryRoutes = ["/admin/absence", "/admin", "/admin/bookings", "/admin/transactions", "/admin/schedules"];
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -30,12 +38,14 @@ interface SidebarItemProps {
   isActive: boolean;
   isExpanded: boolean;
   disabled?: boolean;
+  onNavigate?: () => void;
 }
 
-function SidebarItem({ icon, href, label, isActive, isExpanded, disabled }: SidebarItemProps) {
+function SidebarItem({ icon, href, label, isActive, isExpanded, disabled, onNavigate }: SidebarItemProps) {
   return (
     <Link 
       href={disabled ? "#" : href} 
+      onNavigate={onNavigate}
       className={`relative flex items-center w-full py-2.5 transition-all ${
         isExpanded ? "px-4 justify-start gap-3 rounded-xl hover:bg-gray-50/50" : "justify-center group"
       } ${disabled ? "opacity-50 pointer-events-none cursor-not-allowed" : ""}`}
@@ -59,7 +69,7 @@ function SidebarItem({ icon, href, label, isActive, isExpanded, disabled }: Side
 
       {/* Label Text */}
       {isExpanded && (
-        <span className={`font-bold text-xs select-none animate-in fade-in slide-in-from-left-2 duration-150 ${
+        <span className={`font-bold text-xs whitespace-nowrap select-none animate-in fade-in slide-in-from-left-2 duration-150 ${
           isActive ? "text-[#008080]" : "text-gray-500"
         }`}>
           {label}
@@ -76,77 +86,85 @@ export default function AdminDashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [sessionError, setSessionError] = useState(false);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const mobileNavigation = useRef<HTMLDialogElement>(null);
   const [isMasterDataOpen, setIsMasterDataOpen] = useState(false);
+  const masterDataButton = useRef<HTMLButtonElement>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
   const [isClockedIn, setIsClockedIn] = useState<boolean | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role?: string; permissions?: Record<string, boolean> } | null>(null);
+  const isMasterDataExpanded = isMasterDataOpen && isClockedIn !== false;
+  const isExpanded = isSidebarOpen || isMasterDataExpanded;
+  const [currentUser, setCurrentUser] = useState<AdminSession | null>(null);
+  const userId = currentUser?.id;
+  const pagePermission = getAdminPagePermission(pathname);
+  const allowedPage = !pagePermission || currentUser?.permissions[pagePermission] === true;
+  const authorized = currentUser !== null;
+  const clockInRequired = needsClockIn(currentUser?.permissions);
+  const canViewNotifications = currentUser?.permissions?.feat_notifications_view === true;
+  const notificationStorageKey = `admin_notifications:${userId}`;
   const [isClockedOut, setIsClockedOut] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<any[]>([]);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("admin_token");
-    const lastCheck = localStorage.getItem("admin_token_timestamp");
-    const userStr = localStorage.getItem("admin_user");
-    const now = Date.now();
+    let request: AbortController | undefined;
 
-    if (!token) {
-      router.push("/admin/login");
-      return;
-    }
+    const loadSession = async () => {
+      request?.abort();
+      const controller = new AbortController();
+      request = controller;
 
-    try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const payload = JSON.parse(window.atob(base64));
-
-      const isExpired = payload.exp && now >= payload.exp * 1000;
-      const is24HoursPassed = lastCheck && now - parseInt(lastCheck) > 24 * 60 * 60 * 1000;
-
-      if (isExpired || is24HoursPassed) {
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_token_timestamp");
-        localStorage.removeItem("admin_user");
-        document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        router.push("/admin/login");
-        return;
-      }
-
-      localStorage.setItem("admin_token_timestamp", now.toString());
-      setUserId(payload.sub);
-
-      if (userStr) {
-        try {
-          setCurrentUser(JSON.parse(userStr));
-        } catch (err) {
-          // ignore
+      try {
+        setSessionError(false);
+        const response = await staffFetch("/auth/session", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (response.status === 401) {
+          setCurrentUser(null);
+          router.replace("/admin/login");
+          return;
         }
-      } else {
-        setCurrentUser({ name: payload.name || "Admin User", email: payload.email || "admin@fwdental.com" });
-      }
+        if (response.status === 403) {
+          setCurrentUser(null);
+          router.replace("/admin/access-denied");
+          return;
+        }
+        if (!response.ok) throw new Error("Could not load staff session");
 
-      setAuthorized(true);
-    } catch (e) {
-      localStorage.removeItem("admin_token");
-      localStorage.removeItem("admin_token_timestamp");
-      localStorage.removeItem("admin_user");
-      document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      router.push("/admin/login");
-    }
-  }, [router]);
+        const session: AdminSession = await response.json();
+        if (controller.signal.aborted) return;
+        setCurrentUser(session);
+      } catch {
+        if (!controller.signal.aborted) setSessionError(true);
+      }
+    };
+
+    void loadSession();
+    window.addEventListener("focus", loadSession);
+    return () => {
+      request?.abort();
+      window.removeEventListener("focus", loadSession);
+    };
+  }, [router, sessionAttempt]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (authorized && !allowedPage) router.replace("/admin/access-denied");
+  }, [authorized, allowedPage, router]);
+
+  useEffect(() => {
+    if (!userId || !clockInRequired) return;
 
     const checkAbsence = () => {
-      fetch(`http://localhost:3001/absences/today/${userId}`)
-        .then((res) => {
-          if (!res.ok) return null;
-          return res.json();
+      staffFetch(`/absences/today/${userId}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Could not verify clock-in status");
+          const body = await res.text();
+          return body ? JSON.parse(body) : null;
         })
         .then((data) => {
           setIsClockedIn(!!data);
@@ -154,7 +172,7 @@ export default function AdminDashboardLayout({
         })
         .catch((err) => {
           console.error("Failed to check daily absence", err);
-          setIsClockedIn(false);
+          setIsClockedIn(null);
           setIsClockedOut(false);
         });
     };
@@ -163,13 +181,13 @@ export default function AdminDashboardLayout({
 
     window.addEventListener('clock-in-success', checkAbsence);
     return () => window.removeEventListener('clock-in-success', checkAbsence);
-  }, [userId, pathname]);
+  }, [userId, pathname, clockInRequired]);
 
   useEffect(() => {
-    if (isClockedIn === false && pathname !== "/admin/absence") {
+    if (allowedPage && clockInRequired && isClockedIn === false && pathname !== "/admin/absence") {
       router.push("/admin/absence");
     }
-  }, [isClockedIn, pathname, router]);
+  }, [allowedPage, clockInRequired, isClockedIn, pathname, router]);
 
   const playNotificationSound = () => {
     try {
@@ -207,9 +225,9 @@ export default function AdminDashboardLayout({
   };
 
   useEffect(() => {
-    if (!authorized) return;
+    if (!authorized || !userId || !canViewNotifications) return;
 
-    const saved = localStorage.getItem("admin_notifications");
+    const saved = localStorage.getItem(notificationStorageKey);
     if (saved) {
       try {
         setNotifications(JSON.parse(saved));
@@ -229,9 +247,9 @@ export default function AdminDashboardLayout({
         let redirectUrl = "";
 
         if (eventName === "BOOKING_CREATED") {
-          shouldNotify = true;
+          shouldNotify = currentUser?.permissions?.page_bookings === true;
           title = "New Booking Appointment!";
-          message = `${payload.patientName} booked ${payload.serviceName} at ${payload.time} (${payload.date})`;
+          message = "Open the booking queue to view the appointment.";
           redirectUrl = "/admin/bookings";
         } else if (eventName === "CLOCK_IN_REMINDER") {
           if (isClockedIn === false) {
@@ -241,7 +259,7 @@ export default function AdminDashboardLayout({
             redirectUrl = "/admin/absence";
           }
         } else if (eventName === "CLOCK_OUT_REMINDER") {
-          if (isClockedIn === true && !isClockedOut) {
+          if (isClockedIn === true && !isClockedOut && currentUser?.permissions?.feat_absence_clock_out === true) {
             shouldNotify = true;
             title = "Clock Out Reminder";
             message = payload.message || "Don't forget to clock out before you leave!";
@@ -264,7 +282,7 @@ export default function AdminDashboardLayout({
 
           setNotifications((prev) => {
             const updated = [newNotif, ...prev].slice(0, 50);
-            localStorage.setItem("admin_notifications", JSON.stringify(updated));
+            localStorage.setItem(notificationStorageKey, JSON.stringify(updated));
             return updated;
           });
 
@@ -282,7 +300,7 @@ export default function AdminDashboardLayout({
     return () => {
       eventSource.close();
     };
-  }, [authorized, isClockedIn, isClockedOut]);
+  }, [authorized, userId, canViewNotifications, notificationStorageKey, currentUser, isClockedIn, isClockedOut]);
 
   useEffect(() => {
     if (toasts.length > 0) {
@@ -295,13 +313,13 @@ export default function AdminDashboardLayout({
 
   const clearNotifications = () => {
     setNotifications([]);
-    localStorage.removeItem("admin_notifications");
+    localStorage.removeItem(notificationStorageKey);
   };
 
   const handleNotificationClick = (notif: any) => {
     setNotifications((prev) => {
       const updated = prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n));
-      localStorage.setItem("admin_notifications", JSON.stringify(updated));
+      localStorage.setItem(notificationStorageKey, JSON.stringify(updated));
       return updated;
     });
 
@@ -324,52 +342,65 @@ export default function AdminDashboardLayout({
     { icon: <Settings className="size-5" />, href: "/admin/settings", label: "Settings" },
   ];
 
-  const filteredNavigation = navigation.filter((item) => {
-    if (item.href === "/admin/absence") return true;
+  const masterDataLinks = [
+    { slug: "employees", label: "Employees", icon: Users, visible: currentUser?.permissions?.page_employees },
+    { slug: "doctors", label: "Doctors", icon: Stethoscope, visible: currentUser?.permissions?.page_doctors },
+    { slug: "services", label: "Services", icon: Sparkles, visible: currentUser?.permissions?.page_services },
+    { slug: "roles", label: "Roles", icon: Shield, visible: currentUser?.permissions?.page_roles },
+  ].filter((link) => link.visible);
 
-    const permissions = currentUser?.permissions;
-    if (!permissions) return false;
+  const filteredNavigation = navigation.filter(({ href }) =>
+    href === "/admin/master-data"
+      ? masterDataLinks.length > 0
+      : currentUser?.permissions[getAdminPagePermission(href) ?? ""] === true
+  );
 
-    if (item.href === "/admin") return !!permissions.page_dashboard;
-    if (item.href === "/admin/bookings") return !!permissions.page_bookings;
-    if (item.href === "/admin/transactions") return !!permissions.page_transactions;
-    if (item.href === "/admin/schedules") return !!permissions.page_schedules;
-    if (item.href === "/admin/settings") return !!permissions.page_settings;
-    
-    if (item.href === "/admin/master-data") {
-      return !!(permissions.page_employees || permissions.page_doctors || permissions.page_roles);
-    }
-    
-    return true;
-  });
+  const closeMasterData = () => setIsMasterDataOpen(false);
+  const mobileLinks = filteredNavigation.flatMap((item) => item.href === "/admin/master-data"
+    ? masterDataLinks.map(({ slug, label, icon: Icon }) => ({ href: `${item.href}/${slug}`, label, icon: <Icon className="size-5" /> }))
+    : [item]);
+  const availableMobileLinks = mobileLinks.filter(({ href }) => isClockedIn !== false || href === "/admin/absence");
+  const primaryMobileLinks = availableMobileLinks.filter(({ href }) => mobilePrimaryRoutes.includes(href));
+  const otherMobileLinks = availableMobileLinks.filter(({ href }) => !mobilePrimaryRoutes.includes(href));
 
-  const handleLogout = () => {
-    localStorage.removeItem("admin_token");
-    localStorage.removeItem("admin_token_timestamp");
-    localStorage.removeItem("admin_user");
-    document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push("/admin/login");
-  };
-
-  if (!authorized) {
+  if (!authorized || !allowedPage) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-[#f8f9fd]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#008080]"></div>
+        {sessionError ? (
+          <div className="text-center text-sm text-gray-700" role="alert">
+            <p>Could not load your staff session.</p>
+            <button
+              type="button"
+              onClick={() => setSessionAttempt(attempt => attempt + 1)}
+              className="mt-2 font-semibold text-teal-700 underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div role="status" aria-label="Loading staff session" className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#008080]" />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex bg-[#f8f9fd] font-sans text-gray-800 antialiased overflow-hidden">
+    <div className="admin-shell flex min-h-dvh bg-[#f8f9fd] font-sans text-gray-800 antialiased">
       {/* Sidebar - Desktop (Collapsible width transition) */}
-      <aside className={`shrink-0 bg-white border-r border-gray-100 flex flex-col justify-between py-6 select-none transition-all duration-300 ${
-        isExpanded ? "w-60" : "w-[76px]"
+      <aside className={`hidden shrink-0 bg-white border-r border-gray-100 lg:flex flex-col py-6 select-none transition-[width] duration-300 motion-reduce:transition-none ${
+        isExpanded ? "w-52 sm:w-60" : "w-[76px]"
       }`}>
-        <div className="w-full flex flex-col gap-8">
-          {/* Logo container toggles isExpanded */}
-          <div className={`flex items-center w-full ${isExpanded ? "px-5 justify-start gap-3" : "justify-center"}`}>
+        <div className="w-full min-h-0 flex flex-col gap-8">
+          <div className={`flex shrink-0 items-center w-full overflow-hidden ${isExpanded ? "px-5 justify-start gap-3" : "justify-center"}`}>
             <button
-              onClick={() => setIsExpanded(!isExpanded)}
+              type="button"
+              aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+              aria-expanded={isExpanded}
+              aria-controls="admin-navigation"
+              onClick={() => {
+                setIsSidebarOpen(!isExpanded);
+                closeMasterData();
+              }}
               className="size-10 bg-[#008080] rounded-xl flex items-center justify-center text-white shadow-md shadow-teal-100 hover:scale-105 transition-all shrink-0 cursor-pointer"
             >
               <Stethoscope className="size-5" />
@@ -382,193 +413,83 @@ export default function AdminDashboardLayout({
           </div>
 
           {/* Navigation Items */}
-          <nav className={`w-full flex flex-col gap-2 ${isExpanded ? "px-3" : "items-center"}`}>
+          <nav id="admin-navigation" aria-label="Admin navigation" className={`w-full min-h-0 flex flex-col gap-2 overflow-x-hidden overflow-y-auto ${isExpanded ? "px-3" : "items-center"}`}>
             {filteredNavigation.map((item) => {
               const isAbsence = item.href === "/admin/absence";
               const disabled = isClockedIn === false && !isAbsence;
 
-              if (item.label === "Master Data") {
-                const isActive = pathname.startsWith("/admin/master-data");
+              if (item.href === "/admin/master-data") {
+                const isActive = pathname.startsWith(item.href);
+                const isHighlighted = isActive || isMasterDataExpanded;
+
                 return (
-                  <div key={item.label} className="relative w-full">
-                    {!isExpanded ? (
-                      // Collapsed Mode: Hover Popover
-                      <>
-                        <button
-                          onClick={() => !disabled && setIsMasterDataOpen(!isMasterDataOpen)}
-                          className={`relative flex items-center justify-center w-full py-3 group cursor-pointer ${
-                            disabled ? "opacity-50 pointer-events-none cursor-not-allowed" : ""
-                          }`}
-                        >
-                          {isActive && (
-                            <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-[#008080] rounded-r-full" />
-                          )}
-                          <div
-                            className={`size-10 rounded-xl flex items-center justify-center transition-all ${
-                              isActive
-                                ? "bg-[#008080]/10 text-[#008080]"
-                                : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                  <div
+                    key={item.href}
+                    className="w-full"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape" && isMasterDataExpanded) {
+                        closeMasterData();
+                        masterDataButton.current?.focus();
+                      }
+                    }}
+                  >
+                    <button
+                      ref={masterDataButton}
+                      type="button"
+                      aria-label={item.label}
+                      aria-expanded={isMasterDataExpanded}
+                      aria-controls="master-data-links"
+                      title={isExpanded ? undefined : item.label}
+                      disabled={disabled}
+                      onClick={() => setIsMasterDataOpen((open) => !open)}
+                      className={`group relative flex w-full cursor-pointer items-center py-2.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isExpanded ? "gap-3 rounded-xl px-4 hover:bg-gray-50/50" : "justify-center"
+                      } ${isMasterDataExpanded ? "bg-[#008080]/5" : ""}`}
+                    >
+                      {isActive && !isExpanded && (
+                        <span className="absolute left-0 top-1/4 bottom-1/4 w-1 rounded-r-full bg-[#008080]" />
+                      )}
+                      <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                        isHighlighted ? "bg-[#008080]/10 text-[#008080]" : "text-gray-400 group-hover:bg-gray-50 group-hover:text-gray-600"
+                      }`}>
+                        {item.icon}
+                      </span>
+                      {isExpanded && (
+                        <>
+                          <span className={`whitespace-nowrap text-xs font-bold ${isHighlighted ? "text-[#008080]" : "text-gray-500"}`}>
+                            {item.label}
+                          </span>
+                          <ChevronRight
+                            aria-hidden="true"
+                            className={`ml-auto size-3.5 shrink-0 text-gray-400 transition-transform motion-reduce:transition-none ${
+                              isMasterDataExpanded ? "rotate-90" : ""
                             }`}
-                            title={item.label}
-                          >
-                            {item.icon}
-                          </div>
-                        </button>
-
-                        {/* Floating Dropdown Card */}
-                        {isMasterDataOpen && !disabled && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-40 bg-transparent" 
-                              onClick={() => setIsMasterDataOpen(false)}
-                            />
-                            <div className="absolute left-[72px] top-0 bg-white border border-gray-150 rounded-2xl shadow-xl py-3 px-2 w-48 z-50 flex flex-col gap-1.5 animate-in fade-in slide-in-from-left-2 duration-150">
-                              <div className="px-3 py-1.5 text-[10px] text-gray-400 font-extrabold uppercase tracking-wider select-none border-b border-gray-50 mb-1">
-                                Master Data Menu
-                              </div>
-                              {currentUser?.permissions?.page_employees && (
-                                <Link 
-                                  href="/admin/master-data/employees"
-                                  onClick={() => setIsMasterDataOpen(false)}
-                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                    pathname === "/admin/master-data/employees"
-                                      ? "bg-[#008080]/10 text-[#008080]"
-                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                  }`}
-                                >
-                                  <Users className="size-4" />
-                                  Employees
-                                </Link>
-                              )}
-                              {currentUser?.permissions?.page_doctors && (
-                                <Link 
-                                  href="/admin/master-data/doctors"
-                                  onClick={() => setIsMasterDataOpen(false)}
-                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                    pathname === "/admin/master-data/doctors"
-                                      ? "bg-[#008080]/10 text-[#008080]"
-                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                  }`}
-                                >
-                                  <Stethoscope className="size-4" />
-                                  Doctors
-                                </Link>
-                              )}
-                              <Link 
-                                href="/admin/master-data/services"
-                                onClick={() => setIsMasterDataOpen(false)}
-                                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                  pathname === "/admin/master-data/services"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Sparkles className="size-4" />
-                                Services
-                              </Link>
-                              {currentUser?.permissions?.page_roles && (
-                                <Link 
-                                  href="/admin/master-data/roles"
-                                  onClick={() => setIsMasterDataOpen(false)}
-                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-colors ${
-                                    pathname === "/admin/master-data/roles"
-                                      ? "bg-[#008080]/10 text-[#008080]"
-                                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                  }`}
-                                >
-                                  <Shield className="size-4" />
-                                  Roles
-                                </Link>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      // Expanded Mode: Inline Accordion Dropdown
-                      <div className="w-full flex flex-col select-none">
-                        <button
-                          onClick={() => !disabled && setIsMasterDataOpen(!isMasterDataOpen)}
-                          className={`relative flex items-center justify-between w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer ${
-                            disabled ? "opacity-50 pointer-events-none cursor-not-allowed" : ""
-                          } ${isActive ? "bg-gray-50/50" : "hover:bg-gray-50/50"}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`size-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${
-                                isActive ? "bg-[#008080]/10 text-[#008080]" : "text-gray-400"
-                              }`}
-                            >
-                              {item.icon}
-                            </div>
-                            <span className={`font-bold text-xs ${isActive ? "text-[#008080]" : "text-gray-500"}`}>
-                              {item.label}
-                            </span>
-                          </div>
-                          <ChevronRight 
-                            className={`size-3.5 text-gray-400 transition-transform duration-200 ${
-                              isMasterDataOpen && !disabled ? "rotate-90" : ""
-                            }`} 
                           />
-                        </button>
+                        </>
+                      )}
+                    </button>
+                    <ul id="master-data-links" hidden={!isMasterDataExpanded} className="my-1 ml-9 space-y-1 border-l border-teal-100 pl-2">
+                      {masterDataLinks.map(({ slug, label, icon: Icon }) => {
+                        const href = `${item.href}/${slug}`;
+                        const isCurrentPage = pathname === href;
 
-                        {/* Inline Accordion Links */}
-                        {isMasterDataOpen && !disabled && (
-                          <div className="flex flex-col pl-10 pr-2 py-1 gap-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                            {currentUser?.permissions?.page_employees && (
-                              <Link 
-                                href="/admin/master-data/employees"
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                  pathname === "/admin/master-data/employees"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Users className="size-3.5" />
-                                Employees
-                              </Link>
-                            )}
-                            {currentUser?.permissions?.page_doctors && (
-                              <Link 
-                                href="/admin/master-data/doctors"
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                  pathname === "/admin/master-data/doctors"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Stethoscope className="size-3.5" />
-                                Doctors
-                              </Link>
-                            )}
-                            <Link 
-                              href="/admin/master-data/services"
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                pathname === "/admin/master-data/services"
-                                  ? "bg-[#008080]/10 text-[#008080]"
-                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                        return (
+                          <li key={slug}>
+                            <Link
+                              href={href}
+                              aria-current={isCurrentPage ? "page" : undefined}
+                              onNavigate={closeMasterData}
+                              className={`flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                                isCurrentPage ? "bg-[#008080]/10 text-[#008080]" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                               }`}
                             >
-                              <Sparkles className="size-3.5" />
-                              Services
+                              <Icon aria-hidden="true" className="size-4 shrink-0" />
+                              {label}
                             </Link>
-                            {currentUser?.permissions?.page_roles && (
-                              <Link 
-                                href="/admin/master-data/roles"
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-[11px] transition-colors ${
-                                  pathname === "/admin/master-data/roles"
-                                    ? "bg-[#008080]/10 text-[#008080]"
-                                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                                }`}
-                              >
-                                <Shield className="size-3.5" />
-                                Roles
-                              </Link>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 );
               }
@@ -587,6 +508,7 @@ export default function AdminDashboardLayout({
                   isActive={isActive}
                   isExpanded={isExpanded}
                   disabled={disabled}
+                  onNavigate={closeMasterData}
                 />
               );
             })}
@@ -595,11 +517,19 @@ export default function AdminDashboardLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Header */}
-        <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-8 select-none">
+        <header className="admin-header sticky top-0 z-30 flex min-h-16 items-center justify-between gap-3 border-b border-gray-100 bg-white select-none lg:static lg:min-h-[72px]">
+          <div className="flex min-w-0 items-center gap-2 lg:hidden">
+            {otherMobileLinks.length > 0 && (
+              <button type="button" aria-label="More menus" aria-haspopup="dialog" className="grid size-11 shrink-0 place-items-center rounded-xl text-teal-800 hover:bg-teal-50" onClick={() => mobileNavigation.current?.showModal()}>
+                <Menu className="size-6" />
+              </button>
+            )}
+            <span className="truncate text-sm font-bold">{mobileLinks.find(({ href }) => href === pathname)?.label ?? "FW Dental"}</span>
+          </div>
           {/* Search bar */}
-          <div className="w-80 relative flex items-center">
+          <div className="relative hidden w-80 items-center lg:flex">
             <Search className="absolute left-3 size-4 text-gray-400" />
             <input
               type="text"
@@ -614,9 +544,9 @@ export default function AdminDashboardLayout({
           </div>
 
           {/* Right Header Icons */}
-          <div className="flex items-center gap-5">
+          <div className="flex shrink-0 items-center gap-2 lg:gap-5">
             {/* Notification Bell */}
-            <div className="relative">
+            {canViewNotifications && <div className="relative">
               <button 
                 onClick={() => setIsNotificationMenuOpen(!isNotificationMenuOpen)}
                 className="relative size-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-all cursor-pointer animate-in fade-in duration-205"
@@ -634,7 +564,7 @@ export default function AdminDashboardLayout({
                     className="fixed inset-0 z-45 bg-transparent"
                     onClick={() => setIsNotificationMenuOpen(false)}
                   />
-                  <div className="absolute right-0 mt-2 bg-white border border-gray-150 rounded-2xl shadow-xl py-3 px-4 w-80 z-50 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="admin-notifications mt-2 bg-white border border-gray-150 rounded-2xl shadow-xl py-3 px-4 z-50 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="flex items-center justify-between min-w-0">
                       <span className="font-bold text-xs text-gray-800 leading-normal">
                         Notifications ({unreadCount} new)
@@ -690,7 +620,7 @@ export default function AdminDashboardLayout({
                   </div>
                 </>
               )}
-            </div>
+            </div>}
 
             {/* User Profile Dropdown */}
             <div className="relative">
@@ -724,7 +654,7 @@ export default function AdminDashboardLayout({
                     <button
                       onClick={() => {
                         setIsUserMenuOpen(false);
-                        handleLogout();
+                        void signOutStaff();
                       }}
                       className="flex items-center gap-2.5 w-full py-2 px-3 rounded-xl font-bold text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer text-left"
                     >
@@ -739,13 +669,37 @@ export default function AdminDashboardLayout({
         </header>
 
         {/* Content Viewport */}
-        <main className="flex-1 overflow-hidden bg-[#f8f9fd] p-6 flex flex-col">
-          {children}
+        <main className="admin-content flex min-w-0 flex-1 flex-col bg-[#f8f9fd]">
+          <AdminAccessContext.Provider value={currentUser}>
+            {children}
+          </AdminAccessContext.Provider>
         </main>
       </div>
 
       {/* Floating Toast Alerts Container */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+      {primaryMobileLinks.length > 0 && (
+        <nav aria-label="Main staff menus" className="admin-bottom-nav fixed inset-x-0 bottom-0 z-20 flex justify-center border-t border-gray-200 bg-white lg:hidden print:hidden">
+          {primaryMobileLinks.map(({ href, icon, label }) => (
+            <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className="flex min-h-14 min-w-0 max-w-32 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-center text-[10px] leading-none font-semibold text-gray-600 hover:bg-gray-50 aria-[current=page]:bg-teal-50 aria-[current=page]:text-teal-800 sm:text-xs">
+              {icon}<span>{label}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
+      <dialog ref={mobileNavigation} aria-labelledby="mobile-navigation-title" className="admin-drawer fixed left-0 top-0 m-0 h-dvh max-h-none w-72 max-w-[88vw] overflow-y-auto bg-white shadow-xl backdrop:bg-black/40">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 id="mobile-navigation-title" className="font-bold text-teal-900">More menus</h2>
+          <button type="button" aria-label="Close navigation" className="grid size-11 place-items-center rounded-xl hover:bg-gray-100" onClick={() => mobileNavigation.current?.close()}><X className="size-5" /></button>
+        </div>
+        <nav aria-label="Additional staff menus" className="flex flex-col gap-1">
+          {otherMobileLinks.map(({ href, icon, label }) => (
+            <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 aria-[current=page]:bg-teal-50 aria-[current=page]:text-teal-800" onClick={() => mobileNavigation.current?.close()}>
+              {icon}{label}
+            </Link>
+          ))}
+        </nav>
+      </dialog>
+      <div className="admin-toasts fixed z-40 flex max-w-sm flex-col gap-3 pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}

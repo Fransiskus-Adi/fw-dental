@@ -7,7 +7,6 @@ export default function AboutSection() {
         {/* Section Title */}
         <h2
           className="text-5xl lg:text-7xl font-medium tracking-tight mb-10"
-          style={{ fontFamily: "var(--font-playfair)" }}
         >
           About
         </h2>
@@ -23,7 +22,6 @@ export default function AboutSection() {
               </p>
               <h3
                 className="text-3xl lg:text-4xl font-medium leading-snug tracking-tight"
-                style={{ fontFamily: "var(--font-playfair)" }}
               >
                 Help you achieve a{" "}
                 <span className="text-teal-600">
@@ -42,7 +40,6 @@ export default function AboutSection() {
                 <ArrowUpRight className="w-8 h-8 text-gray-700 self-end" />
                 <h4
                   className="text-xl lg:text-2xl font-medium mt-auto"
-                  style={{ fontFamily: "var(--font-playfair)" }}
                 >
                   Skilled
                   <br />
@@ -53,7 +50,6 @@ export default function AboutSection() {
                 <ArrowUpRight className="w-8 h-8 text-gray-700 self-end" />
                 <h4
                   className="text-xl lg:text-2xl font-medium mt-auto"
-                  style={{ fontFamily: "var(--font-playfair)" }}
                 >
                   Comfortable
                   <br />

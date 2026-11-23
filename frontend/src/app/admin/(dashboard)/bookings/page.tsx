@@ -1,5 +1,9 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+
 import React, { useState, useEffect } from "react";
 import {
   Calendar,
@@ -20,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { staffFetch } from "@/lib/staff-fetch";
 
 interface Booking {
   id: string;
@@ -39,7 +44,9 @@ interface Booking {
 }
 
 export default function AdminBookingsPage() {
+  const { can } = useAdminAccess();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingLoad, setBookingLoad] = useState<"loading" | "ready" | "error">("loading");
   const [services, setServices] = useState<any[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,21 +78,23 @@ export default function AdminBookingsPage() {
   });
 
   const fetchBookings = () => {
-    fetch("http://localhost:3001/bookings")
+    setBookingLoad("loading");
+    staffFetch("/bookings")
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch bookings");
         return res.json();
       })
       .then(data => {
         setBookings(data.map(mapBackendBooking));
+        setBookingLoad("ready");
       })
-      .catch(err => console.error("Error loading bookings:", err));
+      .catch(() => setBookingLoad("error"));
   };
 
   useEffect(() => {
     fetchBookings();
 
-    fetch("http://localhost:3001/services")
+    fetch("/api/clinic/services")
       .then(res => res.json())
       .then(data => {
         setServices(data);
@@ -104,6 +113,7 @@ export default function AdminBookingsPage() {
   const [checkoutPaymentStatus, setCheckoutPaymentStatus] = useState("PAID");
   const [checkoutDiscount, setCheckoutDiscount] = useState<number>(0);
   const [checkoutNotes, setCheckoutNotes] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
   const [submittingCheckout, setSubmittingCheckout] = useState(false);
 
   const handleOpenCheckout = (booking: Booking) => {
@@ -113,26 +123,21 @@ export default function AdminBookingsPage() {
     setCheckoutPaymentStatus("PAID");
     setCheckoutDiscount(0);
     setCheckoutNotes("");
+    setCheckoutError("");
     setIsCheckoutOpen(true);
   };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!checkoutBooking) return;
+    if (!checkoutBooking || submittingCheckout) return;
     setSubmittingCheckout(true);
+    setCheckoutError("");
 
     try {
       const itemPrice = Number(checkoutPrice) || 0;
       const discountVal = Number(checkoutDiscount) || 0;
-      const netAmount = Math.max(0, itemPrice - discountVal);
-      const taxVal = Math.round(netAmount * 0.11);
-
       const transactionPayload = {
-        patientId: checkoutBooking.patientId,
-        bookingId: checkoutBooking.id,
-        doctorId: checkoutBooking.doctorId || undefined,
         discount: discountVal,
-        tax: taxVal,
         paymentMethod: checkoutPaymentMethod,
         paymentStatus: checkoutPaymentStatus,
         transactionDate: new Date().toISOString().split("T")[0],
@@ -147,7 +152,7 @@ export default function AdminBookingsPage() {
         ],
       };
 
-      const txRes = await fetch("http://localhost:3001/transactions", {
+      const txRes = await staffFetch(`/transactions/booking-checkout/${checkoutBooking.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -160,24 +165,13 @@ export default function AdminBookingsPage() {
         throw new Error(errData.message || "Failed to create transaction");
       }
 
-      const statusRes = await fetch(`http://localhost:3001/bookings/${checkoutBooking.id}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status: "COMPLETED" }),
-      });
-
-      if (!statusRes.ok) {
-        const errData = await statusRes.json();
-        throw new Error(errData.message || "Failed to update booking status");
-      }
-
       alert("Transaction created and booking completed successfully!");
       setIsCheckoutOpen(false);
       fetchBookings();
-    } catch (err: any) {
-      alert(err.message || "Error during checkout");
+    } catch (err) {
+      setCheckoutError(err instanceof TypeError
+        ? "Connection interrupted. Reconnect and submit again to recover this checkout."
+        : err instanceof Error ? err.message : "Could not complete checkout. Please try again.");
     } finally {
       setSubmittingCheckout(false);
     }
@@ -186,7 +180,7 @@ export default function AdminBookingsPage() {
   // Booking status changes
   const updateStatus = async (id: string | number, status: Booking["status"]) => {
     try {
-      const res = await fetch(`http://localhost:3001/bookings/${id}/status`, {
+      const res = await staffFetch(`/bookings/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -207,7 +201,7 @@ export default function AdminBookingsPage() {
     if (!newPatient || !newPhone || !newDate || !newTime || !newTreatment) return;
 
     try {
-      const res = await fetch("http://localhost:3001/bookings", {
+      const res = await staffFetch("/bookings/staff", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -255,11 +249,12 @@ export default function AdminBookingsPage() {
   return (
     <div className="space-y-6 font-sans">
       {/* Top Header Section */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Bookings</h2>
           <p className="text-sm text-gray-400 font-medium">Manage and review dental appointments</p>
         </div>
+        {can("feat_bookings_create") && (
         <button
           onClick={() => setIsModalOpen(true)}
           className="h-10 bg-[#008080] hover:bg-[#006666] text-white font-semibold rounded-xl px-4 transition-all shadow-md shadow-teal-100 flex items-center gap-2 text-sm select-none cursor-pointer"
@@ -267,6 +262,7 @@ export default function AdminBookingsPage() {
           <Plus className="size-4" />
           Add Booking
         </button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -277,6 +273,7 @@ export default function AdminBookingsPage() {
           {["All", "Pending", "Confirmed", "Completed", "Cancelled"].map(tab => (
             <button
               key={tab}
+              aria-pressed={statusFilter === tab}
               onClick={() => setStatusFilter(tab)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === tab
@@ -293,7 +290,8 @@ export default function AdminBookingsPage() {
         <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
           <input
-            type="text"
+            type="search"
+            aria-label="Search bookings"
             placeholder="Search name, doctor or treatment"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
@@ -303,26 +301,27 @@ export default function AdminBookingsPage() {
       </div>
 
       {/* Bookings List Card */}
+      {bookingLoad === "error" && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">Could not load bookings. <button type="button" className="font-semibold underline" onClick={fetchBookings}>Retry</button></p>}
       <Card className="bg-white border-none shadow-sm rounded-3xl overflow-hidden">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-gray-50/50 text-gray-400 font-semibold border-b border-gray-100">
-                  <th className="py-4 px-6">Patient</th>
-                  <th className="py-4 px-4">Treatment</th>
-                  <th className="py-4 px-4">Dentist</th>
-                  <th className="py-4 px-4">Date & Time</th>
-                  <th className="py-4 px-4">Status</th>
-                  <th className="py-4 px-6 text-right">Actions</th>
+            <table role="table" className="mobile-records w-full text-left border-collapse text-sm">
+              <thead role="rowgroup">
+                <tr role="row" className="bg-gray-50/50 text-gray-400 font-semibold border-b border-gray-100">
+                  <th role="columnheader" scope="col" className="py-4 px-6">Patient</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Treatment</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Dentist</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Date & Time</th>
+                  <th role="columnheader" scope="col" className="py-4 px-4">Status</th>
+                  <th role="columnheader" scope="col" className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50/50">
+              <tbody role="rowgroup" className="divide-y divide-gray-50/50">
                 {filteredBookings.length > 0 ? (
                   filteredBookings.map(b => (
-                    <tr key={b.id} className="hover:bg-gray-50/30 transition-colors">
+                    <tr role="row" key={b.id} className="hover:bg-gray-50/30 transition-colors">
                       {/* Patient Info */}
-                      <td className="py-4 px-6">
+                      <td role="cell" className="py-4 px-6">
                         <div>
                           <p className="font-bold text-gray-800 text-sm">{b.patientName}</p>
                           <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
@@ -333,13 +332,13 @@ export default function AdminBookingsPage() {
                       </td>
                       
                       {/* Treatment */}
-                      <td className="py-4 px-4 text-gray-600 font-medium">{b.treatment}</td>
+                      <td role="cell" data-label="Treatment" className="py-4 px-4 text-gray-600 font-medium">{b.treatment}</td>
                       
                       {/* Dentist */}
-                      <td className="py-4 px-4 text-gray-600 font-medium">{b.doctorName}</td>
+                      <td role="cell" data-label="Dentist" className="py-4 px-4 text-gray-600 font-medium">{b.doctorName}</td>
                       
                       {/* Date & Time */}
-                      <td className="py-4 px-4">
+                      <td role="cell" data-label="Date & time" className="py-4 px-4">
                         <div>
                           <p className="font-semibold text-gray-700">{b.date}</p>
                           <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
@@ -350,7 +349,7 @@ export default function AdminBookingsPage() {
                       </td>
 
                       {/* Status */}
-                      <td className="py-4 px-4">
+                      <td role="cell" data-label="Status" className="py-4 px-4">
                         <span
                           className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                             b.status === "Confirmed"
@@ -371,9 +370,9 @@ export default function AdminBookingsPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-4 px-6 text-right">
+                      <td role="cell" data-label="Actions" className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {b.status === "Pending" && (
+                          {can("feat_bookings_status") && b.status === "Pending" && (
                             <>
                               <button
                                 onClick={() => updateStatus(b.id, "Confirmed")}
@@ -391,9 +390,10 @@ export default function AdminBookingsPage() {
                               </button>
                             </>
                           )}
-                          {b.status === "Confirmed" && (
+                          {can("feat_bookings_status") && b.status === "Confirmed" && (
                             <>
                               {b.sourceCode === "WEBSITE" && !b.hasTransaction ? (
+                                can("feat_transactions_create") && (
                                 <button
                                   onClick={() => handleOpenCheckout(b)}
                                   className="size-8 bg-teal-50 hover:bg-teal-100 text-teal-650 rounded-lg flex items-center justify-center transition-all cursor-pointer"
@@ -401,6 +401,7 @@ export default function AdminBookingsPage() {
                                 >
                                   <CreditCard className="size-4" />
                                 </button>
+                                )
                               ) : (
                                 <button
                                   onClick={() => updateStatus(b.id, "Completed")}
@@ -427,9 +428,9 @@ export default function AdminBookingsPage() {
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400 font-medium">
-                      No bookings found matching filters.
+                  <tr role="row">
+                    <td role="cell" colSpan={6} className="text-center py-12 text-gray-400 font-medium">
+                      {bookingLoad === "loading" ? "Loading bookings…" : bookingLoad === "error" ? "Bookings unavailable." : "No bookings found matching filters."}
                     </td>
                   </tr>
                 )}
@@ -441,7 +442,7 @@ export default function AdminBookingsPage() {
 
       {/* New Booking Modal Backdrop */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Add new appointment" onClose={() => setIsModalOpen(false)} className="admin-overlay fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           {/* Modal Container */}
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden border border-gray-100">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -538,18 +539,20 @@ export default function AdminBookingsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
 
       {/* Checkout & Complete Booking Modal Backdrop */}
       {isCheckoutOpen && checkoutBooking && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Booking checkout" onClose={submittingCheckout ? undefined : () => setIsCheckoutOpen(false)} className="admin-overlay fixed inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           {/* Modal Container */}
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-800">Checkout & Create Transaction</h3>
               <button
                 onClick={() => setIsCheckoutOpen(false)}
+                disabled={submittingCheckout}
+                aria-label="Close checkout"
                 className="text-gray-400 hover:text-gray-600 size-8 rounded-lg hover:bg-gray-100 flex items-center justify-center cursor-pointer"
               >
                 <X className="size-5" />
@@ -557,6 +560,7 @@ export default function AdminBookingsPage() {
             </div>
 
             <form onSubmit={handleCheckoutSubmit} className="p-6 space-y-4">
+              {checkoutError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{checkoutError}</p>}
               <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-2 text-xs">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -722,7 +726,7 @@ export default function AdminBookingsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
     </div>
   );

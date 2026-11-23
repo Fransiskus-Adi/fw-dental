@@ -1,22 +1,22 @@
 "use client";
 
+import { AdminDialog } from "@/components/admin-dialog";
+
+import { useAdminAccess } from "@/lib/admin-access-context";
+
 import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
   Shield,
-  FileText,
   X,
-  Edit2,
-  Trash2,
   Loader2,
-  Lock,
-  Layers,
   ChevronRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { MasterDataTable, RecordActions } from "../master-data-table";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { staffFetch } from "@/lib/staff-fetch";
 
 interface Role {
   code: string;
@@ -40,11 +40,23 @@ interface MenuSection {
 
 const MENU_SECTIONS: MenuSection[] = [
   {
+    code: "ABSENCE",
+    name: "ABSENCE",
+    permissions: [
+      { key: "page_absence", label: "Absence Page Access", desc: "Open Absence and see your current clock-in and clock-out status." },
+      { key: "feat_absence_history", label: "View Own Attendance History", desc: "View your past clock-in and clock-out records and recorded locations." },
+      { key: "feat_absence_clock_in", label: "Clock In", desc: "Record the start and location of your shift. This also enables the portal?s clock-in requirement." },
+      { key: "feat_absence_clock_out", label: "Clock Out", desc: "Record the end and location of your shift after clocking in." },
+      { key: "feat_absence_employee_logs", label: "View Employee Attendance Logs", desc: "View attendance records, shift times, and recorded locations for all employees." },
+    ],
+  },
+  {
     code: "DASHBOARD",
     name: "DASHBOARD",
     permissions: [
       { key: "page_dashboard", label: "Dashboard Page Access", desc: "Allow user to open and view the main dashboard overview page." },
-      { key: "feat_dashboard_metrics", label: "Dashboard Metrics", desc: "Allow user to view balances, revenues, and statistics metrics." }
+      { key: "feat_dashboard_metrics", label: "Dashboard Metrics", desc: "View balances, revenue charts, customer and order totals, and clinic activity." },
+      { key: "feat_dashboard_appointments", label: "View Today?s Appointments", desc: "View today?s appointments on the dashboard, including patient names, treatments, and booking status." }
     ]
   },
   {
@@ -52,16 +64,16 @@ const MENU_SECTIONS: MenuSection[] = [
     name: "BOOKINGS",
     permissions: [
       { key: "page_bookings", label: "Bookings Page Access", desc: "Allow user to access the Bookings page queue." },
-      { key: "feat_bookings_create", label: "Create Bookings", desc: "Allow user to create new patient appointments." },
-      { key: "feat_bookings_status", label: "Manage Booking Status", desc: "Allow user to approve, cancel, or complete appointments." }
+      { key: "feat_bookings_create", label: "Create Bookings", desc: "Create patient appointments from the staff Bookings page." },
+      { key: "feat_bookings_status", label: "Manage Booking Status", desc: "Confirm, cancel, or complete appointments from Bookings. Checkout also requires Create Transactions." }
     ]
   },
   {
     code: "TRANSACTIONS",
     name: "TRANSACTIONS",
     permissions: [
-      { key: "page_transactions", label: "Transactions Page Access", desc: "Allow user to open and view the transactions history and POS page." },
-      { key: "feat_transactions_create", label: "Create Transactions", desc: "Allow user to create new transactions and record POS sales." },
+      { key: "page_transactions", label: "Transactions Page Access", desc: "View transaction history and open or print receipts." },
+      { key: "feat_transactions_create", label: "Create Transactions", desc: "Record POS sales from Transactions or create an invoice during booking checkout." },
       { key: "feat_transactions_status", label: "Manage Transaction Status", desc: "Allow user to update transaction payment status." },
       { key: "feat_transactions_delete", label: "Delete Transactions", desc: "Allow user to delete transaction records." }
     ]
@@ -70,7 +82,8 @@ const MENU_SECTIONS: MenuSection[] = [
     code: "SCHEDULES",
     name: "SCHEDULES",
     permissions: [
-      { key: "page_schedules", label: "Schedules Page Access", desc: "Allow user to view doctor schedules and timetable calendar grid." }
+      { key: "page_schedules", label: "Schedules Page Access", desc: "View doctor schedules and appointment details in the timetable." },
+      { key: "feat_schedules_cancel", label: "Cancel Scheduled Appointments", desc: "Cancel a booking directly from the Schedules timetable." }
     ]
   },
   {
@@ -78,8 +91,8 @@ const MENU_SECTIONS: MenuSection[] = [
     name: "EMPLOYEES",
     permissions: [
       { key: "page_employees", label: "Employees Page Access", desc: "Allow user to access Employee Master Data." },
-      { key: "feat_employees_write", label: "Write Employees", desc: "Allow user to create and edit employee profiles and passwords." },
-      { key: "feat_employees_delete", label: "Delete Employees", desc: "Allow user to delete employee accounts." }
+      { key: "feat_employees_write", label: "Write Employees", desc: "Create or edit employee accounts, set passwords, and assign roles. Requires the built-in Administrator role." },
+      { key: "feat_employees_delete", label: "Delete Employees", desc: "Delete employee accounts. Requires the built-in Administrator role." }
     ]
   },
   {
@@ -92,12 +105,21 @@ const MENU_SECTIONS: MenuSection[] = [
     ]
   },
   {
+    code: "SERVICES",
+    name: "SERVICES",
+    permissions: [
+      { key: "page_services", label: "Services Page Access", desc: "Open Services in Master Data and view the clinic?s service catalog." },
+      { key: "feat_services_write", label: "Add and Edit Services", desc: "Create services and edit treatment names, descriptions, prices, durations, and availability." },
+      { key: "feat_services_delete", label: "Delete Services", desc: "Remove services from the clinic?s service catalog." },
+    ],
+  },
+  {
     code: "ROLES",
     name: "ROLES",
     permissions: [
       { key: "page_roles", label: "Roles Page Access", desc: "Allow user to access Roles Master Data." },
-      { key: "feat_roles_write", label: "Write Roles", desc: "Allow user to create and edit role definitions and permissions." },
-      { key: "feat_roles_delete", label: "Delete Roles", desc: "Allow user to delete role configurations." }
+      { key: "feat_roles_write", label: "Write Roles", desc: "Create roles, edit their permissions, and enable or disable roles. Requires the built-in Administrator role." },
+      { key: "feat_roles_delete", label: "Delete Roles", desc: "Delete roles. Requires the built-in Administrator role." }
     ]
   },
   {
@@ -105,9 +127,16 @@ const MENU_SECTIONS: MenuSection[] = [
     name: "SETTINGS",
     permissions: [
       { key: "page_settings", label: "Settings Page Access", desc: "Allow user to view the clinic settings panel." },
-      { key: "feat_settings_write", label: "Modify Settings", desc: "Allow user to update clinic profile, rules, and preferences." }
+      { key: "feat_settings_write", label: "Modify Settings", desc: "Edit the clinic profile, booking rules, and preferences in the Settings form." }
     ]
-  }
+  },
+  {
+    code: "NOTIFICATIONS",
+    name: "NOTIFICATIONS",
+    permissions: [
+      { key: "feat_notifications_view", label: "View Portal Notifications", desc: "Open the notification bell and receive booking alerts and attendance reminders for accessible pages." },
+    ],
+  },
 ];
 
 const ALL_PERMISSION_ITEMS: PermissionItem[] = MENU_SECTIONS.reduce<PermissionItem[]>((acc, section) => {
@@ -117,25 +146,34 @@ const ALL_PERMISSION_ITEMS: PermissionItem[] = MENU_SECTIONS.reduce<PermissionIt
 const TOTAL_PERMISSIONS_COUNT = ALL_PERMISSION_ITEMS.length;
 
 // Custom switch component - Light Mode (using brand teal #008080)
-const Switch = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => {
+const Switch = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) => {
   return (
     <button
       type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-        checked ? "bg-[#008080]" : "bg-gray-200"
-      }`}
+      className="inline-flex h-6 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#008080]"
     >
       <span
-        className={`pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-          checked ? "translate-x-5" : "translate-x-0"
+        aria-hidden="true"
+        className={`pointer-events-none flex h-6 w-full items-center rounded-full p-0.5 transition-colors duration-200 ${
+          checked ? "bg-[#008080]" : "bg-gray-200"
         }`}
-      />
+      >
+        <span
+          className={`size-5 shrink-0 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+            checked ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </span>
     </button>
   );
 };
 
 export default function RolesPage() {
+  const { canAdminister } = useAdminAccess();
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -164,7 +202,7 @@ export default function RolesPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:3001/roles");
+      const res = await staffFetch("/roles");
       if (!res.ok) throw new Error("Failed to load roles");
       const data = await res.json();
       setRoles(data);
@@ -206,9 +244,9 @@ export default function RolesPage() {
     
     // Load permissions from role or default to false
     const rolePerms = role.permissions || {};
-    const initialPerms: Record<string, boolean> = {};
+    const initialPerms: Record<string, boolean> = { ...rolePerms };
     ALL_PERMISSION_ITEMS.forEach(p => {
-      initialPerms[p.key] = !!rolePerms[p.key];
+      initialPerms[p.key] = rolePerms[p.key] === true;
     });
     setPermissions(initialPerms);
     setIsModalOpen(true);
@@ -225,16 +263,15 @@ export default function RolesPage() {
     return menu.permissions.filter(p => !!permissions[p.key]).length;
   };
 
-  const totalEnabledPermissions = Object.values(permissions).filter(Boolean).length;
+  const totalEnabledPermissions = ALL_PERMISSION_ITEMS.filter(({ key }) => permissions[key] === true).length;
 
   const isAllActionsEnabled = totalEnabledPermissions === TOTAL_PERMISSIONS_COUNT;
 
   const handleToggleAllActions = (checked: boolean) => {
-    const updated: Record<string, boolean> = {};
-    ALL_PERMISSION_ITEMS.forEach(p => {
-      updated[p.key] = checked;
-    });
-    setPermissions(updated);
+    setPermissions(prev => ({
+      ...prev,
+      ...Object.fromEntries(ALL_PERMISSION_ITEMS.map(({ key }) => [key, checked])),
+    }));
   };
 
   // Check if all permissions under current section are selected
@@ -272,8 +309,8 @@ export default function RolesPage() {
     setSubmitLoading(true);
     try {
       const url = modalMode === "add" 
-        ? "http://localhost:3001/roles" 
-        : `http://localhost:3001/roles/${selectedCode}`;
+        ? "/roles"
+        : `/roles/${selectedCode}`;
       const method = modalMode === "add" ? "POST" : "PUT";
 
       const payload = {
@@ -284,7 +321,7 @@ export default function RolesPage() {
         permissions
       };
 
-      const res = await fetch(url, {
+      const res = await staffFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -307,7 +344,7 @@ export default function RolesPage() {
   const toggleStatus = async (role: Role) => {
     const newEnabled = role.enabled === 1 ? 0 : 1;
     try {
-      const res = await fetch(`http://localhost:3001/roles/${role.code}`, {
+      const res = await staffFetch(`/roles/${role.code}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: newEnabled }),
@@ -327,7 +364,7 @@ export default function RolesPage() {
     if (!confirm(`Are you sure you want to delete role "${roleCode}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:3001/roles/${roleCode}`, {
+      const res = await staffFetch(`/roles/${roleCode}`, {
         method: "DELETE",
       });
 
@@ -340,7 +377,7 @@ export default function RolesPage() {
 
   const getActivePermsCount = (role: Role) => {
     if (!role.permissions) return 0;
-    return Object.values(role.permissions).filter(Boolean).length;
+    return ALL_PERMISSION_ITEMS.filter(({ key }) => role.permissions?.[key] === true).length;
   };
 
   const filteredRoles = roles.filter(
@@ -373,6 +410,7 @@ export default function RolesPage() {
           <span className="text-xs text-gray-400 font-bold select-none whitespace-nowrap">
             Total Roles: {roles.length}
           </span>
+          {canAdminister("feat_roles_write") && (
           <button
             onClick={handleOpenAddModal}
             className="h-10 bg-[#008080] hover:bg-[#006666] text-white font-semibold rounded-xl px-4 transition-all shadow-md shadow-teal-100 flex items-center gap-2 text-sm select-none cursor-pointer"
@@ -380,107 +418,55 @@ export default function RolesPage() {
             <Plus className="size-4" />
             Add Role
           </button>
+          )}
         </div>
       </div>
 
-      {/* Main Grid View */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {loading ? (
-          <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-gray-100">
-            <Loader2 className="size-8 text-[#008080] animate-spin" />
-          </div>
-        ) : error ? (
-          <div className="text-center py-12 bg-white rounded-3xl border border-red-100 text-red-500 font-medium">
-            {error}. <button onClick={fetchRoles} className="underline font-bold text-[#008080]">Retry</button>
-          </div>
-        ) : filteredRoles.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
-            {filteredRoles.map(role => (
-              <Card
-                key={role.code}
-                className="bg-white border-none shadow-xs rounded-3xl overflow-hidden hover:shadow-md transition-shadow relative group"
-              >
-                <CardContent className="p-6 space-y-4">
-                  {/* Title & Status */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="size-12 rounded-2xl bg-[#008080]/10 border border-[#008080]/20 flex items-center justify-center text-[#008080]">
-                        <Shield className="size-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-gray-800 text-base">{role.name}</h4>
-                        <code className="text-[10px] text-[#008080] font-mono font-semibold bg-[#008080]/10 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
-                          {role.code}
-                        </code>
-                      </div>
-                    </div>
-
-                    {/* Toggle Button */}
-                    <button
-                      onClick={() => toggleStatus(role)}
-                      className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all select-none cursor-pointer ${
-                        role.enabled === 1
-                          ? "bg-green-50 text-green-600 hover:bg-green-100"
-                          : "bg-red-50 text-red-500 hover:bg-red-100"
-                      }`}
-                      title="Click to toggle status"
-                    >
-                      {role.enabled === 1 ? "Enabled" : "Disabled"}
-                    </button>
-                  </div>
-
-                  {/* Description */}
-                  <div className="space-y-2 text-xs text-gray-500 font-medium pt-2 border-t border-gray-50">
-                    <div className="flex items-start gap-2">
-                      <FileText className="size-4 text-gray-400 shrink-0 mt-0.5" />
-                      <p className="line-clamp-2 leading-relaxed">
-                        {role.description || "No description provided."}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Permissions count badge */}
-                  <div className="flex items-center justify-between text-[10px] text-gray-400 font-extrabold uppercase tracking-wider bg-gray-50/55 p-2.5 rounded-xl">
-                    <div className="flex items-center gap-1.5">
-                      <Layers className="size-3.5 text-[#008080]" />
-                      <span>Role Permissions</span>
-                    </div>
-                    <span className="bg-[#008080]/10 text-[#008080] px-2 py-0.5 rounded-full font-mono">
-                      {getActivePermsCount(role)} / {TOTAL_PERMISSIONS_COUNT} Active
-                    </span>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="pt-3 border-t border-gray-50 flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleOpenEditModal(role)}
-                      className="size-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Edit Role"
-                    >
-                      <Edit2 className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(role.code)}
-                      className="size-8 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 flex items-center justify-center cursor-pointer transition-colors"
-                      title="Delete Role"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 text-gray-400 font-medium">
-            No roles found.
-          </div>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <MasterDataTable
+          label="Roles"
+          columns={["Role", "Code", "Description", "Permissions", "Status"]}
+          loading={loading}
+          error={error}
+          empty={filteredRoles.length === 0}
+          onRetry={fetchRoles}
+        >
+          {filteredRoles.map(role => (
+            <tr role="row" key={role.code} className="hover:bg-gray-50/60">
+              <th role="rowheader" scope="row" className="min-w-32 font-semibold text-gray-800">{role.name}</th>
+              <td role="cell" data-label="Code"><code className="whitespace-nowrap">{role.code}</code></td>
+              <td role="cell" data-label="Description" className="min-w-40">{role.description || "—"}</td>
+              <td role="cell" data-label="Permissions" className="whitespace-nowrap tabular-nums">{getActivePermsCount(role)} / {TOTAL_PERMISSIONS_COUNT} active</td>
+              <td role="cell" data-label="Status">
+                <button
+                  type="button"
+                  disabled={!canAdminister("feat_roles_write")}
+                  onClick={() => toggleStatus(role)}
+                  aria-label={`${role.enabled === 1 ? "Enabled" : "Disabled"}. Change status for ${role.name}`}
+                  className={`cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    role.enabled === 1
+                      ? "bg-green-50 text-green-700 hover:bg-green-100"
+                      : "bg-red-50 text-red-700 hover:bg-red-100"
+                  }`}
+                >
+                  {role.enabled === 1 ? "Enabled" : "Disabled"}
+                </button>
+              </td>
+              <td role="cell" data-label="Actions">
+                <RecordActions
+                  name={role.name}
+                  onEdit={canAdminister("feat_roles_write") ? () => handleOpenEditModal(role) : undefined}
+                  onDelete={canAdminister("feat_roles_delete") ? () => handleDelete(role.code) : undefined}
+                />
+              </td>
+            </tr>
+          ))}
+        </MasterDataTable>
       </div>
 
       {/* Add / Edit Role Modal - Light theme matching clinical dashboard colors */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <AdminDialog label="Role details and permissions" onClose={() => setIsModalOpen(false)} className="admin-overlay fixed inset-0 bg-black/35 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white text-gray-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in duration-200 max-h-[95vh] flex flex-col">
             
             {/* Modal Header */}
@@ -556,12 +542,13 @@ export default function RolesPage() {
                   <div>
                     <h4 className="text-lg font-bold text-gray-800 tracking-tight">Authorities</h4>
                     <p className="text-xs text-gray-500">
-                      Click a menu to configure authority. <strong className="text-gray-850">{totalEnabledPermissions} permission(s) enabled</strong>
+                      Select a section to view its permissions. <strong className="text-gray-850">{totalEnabledPermissions} permission(s) enabled</strong>
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 font-semibold select-none">All actions</span>
+                    <span className="text-xs text-gray-500 font-semibold select-none">All permissions</span>
                     <Switch
+                      label="All permissions"
                       checked={isAllActionsEnabled}
                       onChange={handleToggleAllActions}
                     />
@@ -573,7 +560,7 @@ export default function RolesPage() {
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search menus, widgets, buttons, or authority codes..."
+                    placeholder="Search permissions, descriptions, or codes?"
                     value={authoritySearchTerm}
                     onChange={e => setAuthoritySearchTerm(e.target.value)}
                     className="w-full h-11 pl-10 pr-4 bg-gray-50 border border-gray-200 focus:border-[#008080] outline-none rounded-xl text-xs text-gray-800 placeholder-gray-400 transition-all focus:ring-1 focus:ring-[#008080]"
@@ -581,10 +568,20 @@ export default function RolesPage() {
                 </div>
 
                 {/* Main Split Layout Panel */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 h-[340px] select-none">
+                <div className="grid grid-cols-1 gap-4 lg:h-[340px] lg:grid-cols-12">
+                  <label className="grid gap-1 text-sm font-semibold text-gray-700 lg:hidden">
+                    Permission group
+                    <select className="min-h-11 rounded-xl border border-gray-200 bg-white px-3" value={authoritySearchTerm.trim() ? "" : activeMenuCode} onChange={(event) => {
+                      setActiveMenuCode(event.target.value);
+                      setAuthoritySearchTerm("");
+                    }}>
+                      {authoritySearchTerm.trim() && <option value="" disabled>Search results</option>}
+                      {MENU_SECTIONS.map((menu) => <option key={menu.code} value={menu.code}>{menu.name} ({getMenuEnabledCount(menu)}/{menu.permissions.length})</option>)}
+                    </select>
+                  </label>
                   
                   {/* Left Column: Menus List */}
-                  <div className="md:col-span-5 bg-gray-50/50 border border-gray-150 rounded-2xl p-3 flex flex-col gap-2 overflow-y-auto min-h-0 h-full pr-1.5 scrollbar-thin">
+                  <div className="hidden lg:col-span-5 bg-gray-50/50 border border-gray-150 rounded-2xl p-3 lg:flex flex-col gap-2 lg:overflow-y-auto min-h-0 pr-1.5 scrollbar-thin">
                     <div className="px-2 pb-1.5 text-[9px] text-gray-400 font-extrabold uppercase tracking-wider flex justify-between">
                       <span>Menus</span>
                       <span>{totalEnabledPermissions}/{TOTAL_PERMISSIONS_COUNT}</span>
@@ -597,13 +594,15 @@ export default function RolesPage() {
                       const percent = totalCount > 0 ? (enabledCount / totalCount) * 100 : 0;
 
                       return (
-                        <div
+                        <button
                           key={menu.code}
+                          type="button"
+                          aria-pressed={isSelected}
                           onClick={() => {
                             setActiveMenuCode(menu.code);
                             setAuthoritySearchTerm("");
                           }}
-                          className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col gap-1.5 ${
+                          className={`shrink-0 p-3 rounded-xl border cursor-pointer transition-all flex flex-col gap-1.5 ${
                             isSelected
                               ? "bg-[#008080]/5 border-[#008080]/30 text-[#008080]"
                               : "bg-white hover:bg-gray-100/50 border-gray-150 text-gray-500"
@@ -626,13 +625,13 @@ export default function RolesPage() {
                               style={{ width: `${percent}%` }}
                             />
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
 
                   {/* Right Column: Permission Details Cards */}
-                  <div className="md:col-span-7 bg-gray-50/50 border border-gray-150 rounded-2xl p-4 flex flex-col gap-3.5 overflow-y-auto min-h-0 h-full scrollbar-thin">
+                  <div className="lg:col-span-7 bg-gray-50/50 border border-gray-150 rounded-2xl p-4 flex flex-col gap-3.5 lg:overflow-y-auto min-h-0 scrollbar-thin">
                     <div className="flex items-center justify-between shrink-0">
                       <h5 className="text-[10px] text-gray-450 font-extrabold uppercase tracking-wider">
                         {authoritySearchTerm.trim() !== ""
@@ -642,6 +641,7 @@ export default function RolesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 font-bold uppercase">Select all</span>
                         <Switch
+                          label="Select all visible permissions"
                           checked={isSectionAllEnabled}
                           onChange={handleToggleSectionAll}
                         />
@@ -676,6 +676,7 @@ export default function RolesPage() {
                                   {isChecked ? "1/1" : "0/1"}
                                 </span>
                                 <Switch
+                                  label={p.label}
                                   checked={isChecked}
                                   onChange={(checked) => handlePermissionChange(p.key, checked)}
                                 />
@@ -718,7 +719,7 @@ export default function RolesPage() {
               </div>
             </form>
           </div>
-        </div>
+        </AdminDialog>
       )}
     </div>
   );

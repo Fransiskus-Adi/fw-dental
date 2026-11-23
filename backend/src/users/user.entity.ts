@@ -3,28 +3,47 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  UpdateDateColumn,
+  VirtualColumn,
 } from 'typeorm';
 
-@Entity('users')
+@Entity({ name: 'users', schema: 'auth' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'full_name', length: 255 })
   name: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, length: 255 })
   email: string;
 
-  @Column({ select: false, nullable: true })
+  @Column({ name: 'password_hash', type: 'text', select: false, nullable: true })
   password?: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'phone_number', length: 30, nullable: true })
   phone?: string;
 
-  @Column({ name: 'role_code', nullable: true })
+  @Column({ type: 'smallint', default: 1 })
+  enabled: number;
+
+  @Column({ type: 'smallint', default: 0 })
+  deleted: number;
+
+  @Column({ name: 'session_version', select: false })
+  sessionVersion: number;
+
+  @VirtualColumn({
+    type: 'varchar',
+    query: (alias) =>
+      `SELECT role_code FROM auth.user_roles
+       WHERE user_id = ${alias}.id AND enabled = 1 AND deleted = 0`,
+  })
   roleCode?: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }

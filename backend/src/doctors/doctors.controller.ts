@@ -7,21 +7,39 @@ import {
   Body,
   Param,
   NotFoundException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { DoctorsService } from './doctors.service';
 import { Doctor } from './doctor.entity';
+import { RequireStaff } from '../auth/staff-access.guard';
+import { emailField, parseInput, textField } from '../input';
+
+const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/);
+const doctorInput = z.object({
+  name: textField(150),
+  specialty: textField(150),
+  email: emailField,
+  phone: z.string().trim().max(30).optional(),
+  shiftStart: time.optional(),
+  shiftEnd: time.optional(),
+  status: z.enum(['Active', 'On Leave']).optional(),
+  days: z.array(z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])).max(7).optional(),
+});
 
 @Controller('doctors')
 export class DoctorsController {
   constructor(private readonly doctorsService: DoctorsService) {}
 
   @Get()
+  @RequireStaff(['page_doctors'], ['page_schedules'], ['page_transactions'])
   findAll(): Promise<Doctor[]> {
     return this.doctorsService.findAll();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Doctor> {
+  @RequireStaff(['page_doctors'])
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Doctor> {
     const doctor = await this.doctorsService.findById(id);
     if (!doctor) {
       throw new NotFoundException('Doctor not found');
@@ -30,20 +48,23 @@ export class DoctorsController {
   }
 
   @Post()
-  create(@Body() doctorData: Partial<Doctor>): Promise<Doctor> {
-    return this.doctorsService.create(doctorData);
+  @RequireStaff(['page_doctors', 'feat_doctors_write'])
+  create(@Body() input: unknown): Promise<Doctor> {
+    return this.doctorsService.create(parseInput(doctorInput, input));
   }
 
   @Put(':id')
+  @RequireStaff(['page_doctors', 'feat_doctors_write'])
   update(
-    @Param('id') id: string,
-    @Body() doctorData: Partial<Doctor>,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() input: unknown,
   ): Promise<Doctor> {
-    return this.doctorsService.update(id, doctorData);
+    return this.doctorsService.update(id, parseInput(doctorInput.partial(), input));
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string): Promise<void> {
+  @RequireStaff(['page_doctors', 'feat_doctors_delete'])
+  delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.doctorsService.delete(id);
   }
 }

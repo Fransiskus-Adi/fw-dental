@@ -17,7 +17,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md">
+    <nav className="public-navigation fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between px-6 lg:px-10 py-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">

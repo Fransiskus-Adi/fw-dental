@@ -1,128 +1,56 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
+import type { JwtService } from '@nestjs/jwt';
+import { createHash } from 'node:crypto';
+import type { MailService } from '../mail/mail.service';
+import type { RolesService } from '../roles/roles.service';
+import type { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
-import { UsersService } from '../users/users.service';
-import { MailService } from '../mail/mail.service';
-import { JwtService } from '@nestjs/jwt';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { User } from '../users/user.entity';
 
-describe('AuthService (Forgot Password & OTP)', () => {
-  let authService: AuthService;
-  let usersService: jest.Mocked<Partial<UsersService>>;
-  let mailService: jest.Mocked<Partial<MailService>>;
+describe('Password recovery', () => {
+  const email = 'staff@example.test';
+  const password = 'a new long password';
+  const users = { issuePasswordReset: jest.fn(), resetPassword: jest.fn() };
+  const mail = { sendPasswordResetEmail: jest.fn() };
+  const auth = new AuthService(
+    users as unknown as UsersService,
+    {} as JwtService,
+    mail as unknown as MailService,
+    {} as RolesService,
+    { get: () => 'https://clinic.example.test' } as unknown as ConfigService,
+  );
 
-  const mockEmailUser: Partial<User> = {
-    id: 'user-id-1',
-    name: 'Test Email User',
-    email: 'test@example.com',
-    phone: '0812345678',
-  };
+  beforeEach(() => jest.resetAllMocks());
 
-  const mockPhoneUser: Partial<User> = {
-    id: 'user-id-2',
-    name: 'Test Phone User',
-    email: 'phone@example.com',
-    phone: '0899999999',
-  };
-
-  beforeEach(async () => {
-    usersService = {
-      findByEmailOrPhone: jest.fn().mockImplementation(async (identifier: string) => {
-        if (identifier === 'test@example.com') {
-          return mockEmailUser as User;
-        }
-        if (identifier === '0899999999') {
-          return mockPhoneUser as User;
-        }
-        return null;
-      }),
-    };
-    mailService = {
-      sendOtpEmail: jest.fn().mockResolvedValue(undefined),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuthService,
-        { provide: UsersService, useValue: usersService },
-        { provide: MailService, useValue: mailService },
-        {
-          provide: JwtService,
-          useValue: {
-            sign: jest.fn().mockReturnValue('mock-jwt-token'),
-          },
-        },
-      ],
-    }).compile();
-
-    authService = module.get<AuthService>(AuthService);
+  it('sends a high-entropy link and stores its digest', async () => {
+    users.issuePasswordReset.mockResolvedValue(email);
+    const response = auth.forgotPassword(email);
+    await new Promise(setImmediate);
+    expect(mail.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    const [recipient, link] = mail.sendPasswordResetEmail.mock.calls[0] as [string, string];
+    const url = new URL(link);
+    const token = new URLSearchParams(url.hash.slice(1)).get('reset')!;
+    expect(recipient).toBe(email);
+    expect(url.origin + url.pathname).toBe('https://clinic.example.test/admin/login');
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const digest = createHash('sha256').update(token).digest('hex');
+    expect(users.issuePasswordReset).toHaveBeenCalledWith(email, digest);
+    expect(JSON.stringify(response)).not.toContain(token);
+    users.resetPassword.mockResolvedValue(true);
+    await auth.resetPassword(token, password);
+    expect(users.resetPassword).toHaveBeenCalledWith(digest, password);
   });
 
-  describe('forgotPassword', () => {
-    it('should generate OTP and return message for registered email address', async () => {
-      const result = await authService.forgotPassword({ email: 'test@example.com' });
-      expect(result).toBeDefined();
-      expect(result.email).toBe('test@example.com');
-      expect(result.message).toContain('OTP has been generated and sent');
-      expect(usersService.findByEmailOrPhone).toHaveBeenCalledWith('test@example.com');
-      expect(mailService.sendOtpEmail).toHaveBeenCalledWith('test@example.com', expect.any(String));
-    });
-
-    it('should generate OTP and return message for registered phone number', async () => {
-      const result = await authService.forgotPassword({ email: '0899999999' });
-      expect(result).toBeDefined();
-      expect(result.email).toBe('0899999999');
-      expect(result.message).toContain('OTP has been generated and sent');
-      expect(usersService.findByEmailOrPhone).toHaveBeenCalledWith('0899999999');
-      expect(mailService.sendOtpEmail).not.toHaveBeenCalled();
-    });
-
-    it('should throw NotFoundException if user is not found by email or phone', async () => {
-      await expect(
-        authService.forgotPassword({ email: 'nonexistent@example.com' }),
-      ).rejects.toThrow(NotFoundException);
-    });
+  it('returns the same response for an ineligible address', async () => {
+    users.issuePasswordReset.mockResolvedValue(undefined);
+    const response = auth.forgotPassword(email);
+    await new Promise(setImmediate);
+    expect(response.message).toContain('If the email belongs');
+    expect(mail.sendPasswordResetEmail).not.toHaveBeenCalled();
   });
 
-  describe('verifyOtp', () => {
-    it('should verify OTP successfully with valid code', async () => {
-      // First generate OTP
-      await authService.forgotPassword({ email: 'test@example.com' });
-      
-      // Get the code from private otpStore using reflections or internal check
-      const otpStore = (authService as any).otpStore;
-      const cached = otpStore.get('test@example.com');
-      expect(cached).toBeDefined();
-
-      const result = await authService.verifyOtp({
-        email: 'test@example.com',
-        otp: cached.otp,
-      });
-
-      expect(result).toEqual({
-        message: 'OTP verified successfully',
-        status: 'verified',
-      });
-    });
-
-    it('should throw BadRequestException for invalid OTP code', async () => {
-      await authService.forgotPassword({ email: 'test@example.com' });
-
-      await expect(
-        authService.verifyOtp({
-          email: 'test@example.com',
-          otp: '9999', // Incorrect OTP
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should throw BadRequestException if no OTP is stored/cached for the identifier', async () => {
-      await expect(
-        authService.verifyOtp({
-          email: 'test@example.com',
-          otp: '1234',
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
+  it('rejects expired or consumed links', async () => {
+    users.resetPassword.mockResolvedValue(false);
+    await expect(auth.resetPassword('invalid', password)).rejects.toThrow(BadRequestException);
   });
 });

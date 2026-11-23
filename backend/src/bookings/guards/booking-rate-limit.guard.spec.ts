@@ -8,9 +8,14 @@ describe('BookingRateLimitGuard', () => {
     guard = new BookingRateLimitGuard();
   });
 
-  const createMockContext = (ip: string, phone?: string): ExecutionContext => {
+  const createMockContext = (
+    ip: string,
+    phone?: string,
+    staffId?: string,
+  ): ExecutionContext => {
     const req = {
       ip,
+      staff: staffId ? { id: staffId } : undefined,
       headers: {},
       connection: {},
       body: {
@@ -58,5 +63,17 @@ describe('BookingRateLimitGuard', () => {
     expect(() => guard.canActivate(context4)).toThrow(
       'Too many booking requests for this phone number.',
     );
+  });
+
+  it('allows separate staff accounts to share the same proxy IP', () => {
+    const first = createMockContext('192.168.1.10', undefined, 'first');
+    const second = createMockContext('192.168.1.10', undefined, 'second');
+    expect(guard.canActivate(first)).toBe(true);
+    expect(guard.canActivate(first)).toBe(true);
+    expect(guard.canActivate(first)).toBe(true);
+    expect(() => guard.canActivate(first)).toThrow(
+      'Too many booking requests from this staff account.',
+    );
+    expect(guard.canActivate(second)).toBe(true);
   });
 });

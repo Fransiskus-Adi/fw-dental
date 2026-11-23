@@ -2,30 +2,14 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { TransactionsRepository } from './transactions.repository';
 import { PatientsRepository } from '../bookings/patients.repository';
 import { Transaction } from './transaction.entity';
+import { randomBytes } from 'node:crypto';
+import { localDate } from '../local-date';
+import type { TransactionInput } from './transaction-input';
 
-interface CreateTransactionDto {
-  patientId?: string;
-  patient?: {
-    fullName: string;
-    phoneNumber: string;
-    email?: string;
-  };
+type TransactionWithBooking = TransactionInput & {
   bookingId?: string;
   clinicId?: string;
-  doctorId?: string;
-  discount?: number;
-  tax?: number;
-  paymentMethod?: string;
-  paymentStatus?: string;
-  transactionDate?: string;
-  notes?: string;
-  items: Array<{
-    serviceId?: string;
-    name: string;
-    price: number;
-    quantity: number;
-  }>;
-}
+};
 
 @Injectable()
 export class TransactionsService {
@@ -46,14 +30,14 @@ export class TransactionsService {
     return transaction;
   }
 
-  async create(data: CreateTransactionDto): Promise<Transaction> {
+  async create(data: TransactionInput): Promise<Transaction> {
     let patientId = data.patientId;
 
     // Create patient inline if patient info is passed and patientId is missing
     if (!patientId && data.patient) {
       let patient = await this.patientsRepository.findByPhone(data.patient.phoneNumber);
       if (!patient) {
-        const patientCode = `PAT-${Math.floor(1000 + Math.random() * 9000)}`;
+        const patientCode = 'PAT-' + randomBytes(8).toString('hex').toUpperCase();
         patient = await this.patientsRepository.createAndSave({
           fullName: data.patient.fullName,
           phoneNumber: data.patient.phoneNumber,
@@ -68,11 +52,21 @@ export class TransactionsService {
       throw new BadRequestException('Patient selection or new patient info is required.');
     }
 
+    return this.repository.createAndSave(this.buildTransaction(data, patientId));
+  }
+
+  checkoutBooking(bookingId: string, data: TransactionInput): Promise<Transaction> {
+    return this.repository.checkoutBooking(bookingId, (booking) =>
+      this.buildTransaction({ ...data, bookingId, doctorId: booking.doctorId, clinicId: booking.clinicId }, booking.patientId),
+    );
+  }
+
+  private buildTransaction(data: TransactionWithBooking, patientId: string): Partial<Transaction> {
     if (!data.items || data.items.length === 0) {
       throw new BadRequestException('Transaction must contain at least one item.');
     }
 
-    const transactionCode = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
+    const transactionCode = 'TX-' + randomBytes(8).toString('hex').toUpperCase();
     
     // Calculate totals
     const subtotal = data.items.reduce(
@@ -96,7 +90,7 @@ export class TransactionsService {
       totalAmount,
       paymentMethod: data.paymentMethod,
       paymentStatus: data.paymentStatus || 'UNPAID',
-      transactionDate: data.transactionDate || new Date().toISOString().split('T')[0],
+      transactionDate: data.transactionDate || localDate(),
       notes: data.notes,
       enabled: 1,
       deleted: 0,
@@ -113,7 +107,7 @@ export class TransactionsService {
       }),
     };
 
-    return this.repository.createAndSave(transactionData);
+    return transactionData;
   }
 
   async updateStatus(id: string, paymentStatus: string): Promise<Transaction> {

@@ -23,7 +23,7 @@ export class Doctor {
   @Column({ nullable: true })
   title?: string;
 
-  @Column()
+  @Column({ name: 'specialization' })
   specialty: string;
 
   @Column({ name: 'registration_number', nullable: true })

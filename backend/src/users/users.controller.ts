@@ -1,69 +1,40 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  NotFoundException,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { RequireAdministrator } from '../auth/staff-access.guard';
+import { parseInput } from '../input';
+import { userInput } from './staff-input';
 import { UsersService } from './users.service';
-import { User } from './user.entity';
 
 @Controller('users')
+@RequireAdministrator()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly users: UsersService) {}
 
   @Get()
-  findAll(): Promise<User[]> {
-    return this.usersService.findAll();
+  findAll() {
+    return this.users.findAll();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<User> {
-    const user = await this.usersService.findById(id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const user = await this.users.findById(id);
+    if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
   @Post()
-  create(
-    @Body()
-    body: {
-      name: string;
-      email: string;
-      password?: string;
-      phone?: string;
-    },
-  ): Promise<User> {
-    return this.usersService.create(
-      body.name,
-      body.email,
-      body.password,
-      body.phone,
-    );
+  create(@Body() input: unknown) {
+    const { name, email, password, phone } = parseInput(userInput, input);
+    return this.users.create(name, email, password, phone);
   }
 
   @Put(':id')
-  update(
-    @Param('id') id: string,
-    @Body()
-    body: { name: string; email: string; password?: string; phone?: string },
-  ): Promise<User> {
-    return this.usersService.update(
-      id,
-      body.name,
-      body.email,
-      body.password,
-      body.phone,
-    );
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: unknown) {
+    const { name, email, password, phone } = parseInput(userInput, input);
+    return this.users.update(id, name, email, password, phone);
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string): Promise<void> {
-    return this.usersService.delete(id);
+  delete(@Param('id', ParseUUIDPipe) id: string) {
+    return this.users.delete(id);
   }
 }

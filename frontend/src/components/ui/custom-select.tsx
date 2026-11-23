@@ -49,18 +49,27 @@ export function CustomSelect({
 
   return (
     <div ref={dropdownRef} className={`relative inline-block text-left ${className}`}>
+      <select
+        className="min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-3 text-gray-800 lg:hidden"
+        value={selectedOption?.value ?? ""}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={selectedOption?.label ?? "Select an option"}
+        disabled={disabled}
+      >
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center justify-between gap-2 h-9 px-4 border border-[#008080]/60 rounded-full text-xs bg-white font-extrabold text-[#0f2a4a] outline-none transition-all cursor-pointer shadow-2xs hover:bg-gray-50/50 min-w-[125px] disabled:opacity-50 disabled:cursor-not-allowed ${triggerClassName}`}
+        className={`hidden lg:flex items-center justify-between gap-2 h-9 px-4 border border-[#008080]/60 rounded-full text-xs bg-white font-extrabold text-[#0f2a4a] outline-none transition-all cursor-pointer shadow-2xs hover:bg-gray-50/50 min-w-[125px] disabled:opacity-50 disabled:cursor-not-allowed ${triggerClassName}`}
       >
         <span className="truncate">{selectedOption?.label}</span>
         <ChevronDown className={`size-3.5 text-gray-500 transition-transform duration-200 shrink-0 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-1.5 min-w-full bg-white border border-gray-150 rounded-2xl p-1.5 shadow-lg max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1.5 duration-150">
+        <div className="absolute right-0 z-50 mt-1.5 hidden min-w-full bg-white border border-gray-150 rounded-2xl p-1.5 shadow-lg max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1.5 duration-150 lg:block">
           <div className="flex flex-col gap-0.5">
             {options.map((option) => {
               const isSelected = option.value === value;

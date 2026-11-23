@@ -3,18 +3,10 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, ArrowLeft, LogOut } from "lucide-react";
+import { signOutStaff } from "@/lib/staff-fetch";
 
 export default function AccessDeniedPage() {
   const router = useRouter();
-
-  const handleLogout = () => {
-    localStorage.removeItem("admin_token");
-    localStorage.removeItem("admin_token_timestamp");
-    localStorage.removeItem("admin_user");
-    localStorage.removeItem("admin_notifications");
-    document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push("/admin/login");
-  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#f8f9fd] px-4 py-12 font-sans select-none">
@@ -43,7 +35,7 @@ export default function AccessDeniedPage() {
           </button>
           
           <button
-            onClick={handleLogout}
+            onClick={signOutStaff}
             className="w-full h-11 bg-white border border-gray-250 hover:bg-gray-50 text-gray-700 font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
           >
             <LogOut className="size-4 text-gray-400" />

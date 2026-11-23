@@ -15,12 +15,16 @@ import { AbsencesModule } from './absences/absences.module';
 import { MailModule } from './mail/mail.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { LoggingModule } from './logging/logging.module';
+import { SettingsController } from './settings/settings.controller';
+import { validateEnvironment } from './production-config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       envFilePath: ['.env', `.env.${process.env.NODE_ENV || 'development'}`],
       isGlobal: true,
+      validate: validateEnvironment,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -34,7 +38,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         database: configService.get<string>('DB_DATABASE', 'fw_dental'),
         autoLoadEntities: true,
         synchronize:
-          configService.get<string>('DB_SYNCHRONIZE', 'true') === 'true',
+          configService.get<string>('DB_SYNCHRONIZE', 'false') === 'true',
       }),
     }),
     UsersModule,
@@ -49,8 +53,9 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     MailModule,
     DashboardModule,
     WebhooksModule,
+    LoggingModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, SettingsController],
   providers: [AppService],
 })
 export class AppModule {}

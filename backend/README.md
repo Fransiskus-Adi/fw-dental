@@ -33,6 +33,20 @@ $ npm install
 
 ## Compile and run the project
 
+Apply the SQL files in `db/migration` in version order to an empty development
+database before starting the backend. This V1–V4 baseline replaces the earlier
+development migration chain. If you already applied the earlier scripts,
+create a separate empty database for the baseline and keep the old database
+for any data you need. The API checks for the required schema at startup.
+
+For fresh databases, apply all migrations before bootstrapping the first
+administrator with `db/bootstrap-admin.sql`. Activate the new account with
+the email reset flow. Set the SMTP credentials and `PUBLIC_APP_URL` before
+testing it. The seeded development administrator starts disabled and has no password.
+
+See the [Hostinger deployment guide](../DEPLOY_HOSTINGER.md) for production
+configuration, migration preflight, and staging verification.
+
 ```bash
 # development
 $ npm run start

@@ -2,7 +2,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+Before signing in locally, start the NestJS backend by running `run_backend.bat`
+from the repository root. Wait for it to report that it is listening on
+`http://localhost:3001`. If the backend cannot start, check the database setup
+in the [backend README](../backend/README.md).
+
+Run the frontend development server from the `frontend` directory:
 
 ```bash
 npm run dev
@@ -15,6 +20,15 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Mobile and PWA deployment
+
+- Serve the frontend over HTTPS so phones can install the app and grant location access. The worker registers in a production build.
+- Set `BACKEND_URL` for the frontend at build and runtime if NestJS is hosted elsewhere. The frontend sends clinic requests through `/api/clinic` on its own origin.
+- If deploying behind a reverse proxy, have the public ingress replace incoming `X-Forwarded-For` with the actual client IP and restrict the Next.js and NestJS upstreams to their trusted callers. Set the backend’s `TRUSTED_PROXY_ADDRESSES` to those proxy addresses or CIDRs so booking rate limits use the client IP.
+- Apply the backend migrations before starting the production release. See the
+  [Hostinger deployment guide](../DEPLOY_HOSTINGER.md) for environment variables
+  and the reverse proxy setup.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

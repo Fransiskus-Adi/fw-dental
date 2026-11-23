@@ -19,44 +19,53 @@ export default function BookingSection() {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [serviceError, setServiceError] = useState(false);
+  const [slotError, setSlotError] = useState(false);
+  const [servicesAttempt, retryServices] = useState(0);
+  const [slotsAttempt, retrySlots] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
-    fetch("http://localhost:3001/services")
+    const controller = new AbortController();
+    setServiceError(false);
+    fetch("/api/clinic/services", { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load services");
         return res.json();
       })
       .then((data) => setServices(data))
-      .catch((err) => console.error("Error loading services:", err));
-  }, []);
+      .catch(() => { if (!controller.signal.aborted) setServiceError(true); });
+    return () => controller.abort();
+  }, [servicesAttempt]);
 
   // Fetch slots based on date/service change
   useEffect(() => {
     if (!formData.date || !formData.serviceId) {
       setAvailableSlots([]);
+      setLoadingSlots(false);
       return;
     }
 
+    const controller = new AbortController();
+    setSlotError(false);
     setLoadingSlots(true);
+    setAvailableSlots([]);
+    const query = new URLSearchParams({ date: formData.date, serviceId: formData.serviceId });
     fetch(
-      `http://localhost:3001/bookings/available-slots?date=${formData.date}&serviceId=${formData.serviceId}`
+      `/api/clinic/bookings/available-slots?${query}`, { signal: controller.signal, cache: "no-store" },
     )
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load slots");
         return res.json();
       })
       .then((data) => {
-        setAvailableSlots(data);
-        if (formData.time && !data.includes(formData.time)) {
-          setFormData((prev) => ({ ...prev, time: "" }));
-        }
+        if (!controller.signal.aborted) setAvailableSlots(data);
       })
-      .catch((err) => {
-        console.error("Error loading slots:", err);
-        setAvailableSlots([]);
-      })
-      .finally(() => setLoadingSlots(false));
-  }, [formData.date, formData.serviceId]);
+      .catch(() => { if (!controller.signal.aborted) setSlotError(true); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingSlots(false); });
+    return () => controller.abort();
+  }, [formData.date, formData.serviceId, slotsAttempt]);
 
   // Generate selectable dates (next 14 days, excluding Sundays)
   const getSelectableDates = () => {
@@ -82,7 +91,7 @@ export default function BookingSection() {
       const dayOfWeek = current.getDay();
       if (dayOfWeek !== 0) {
         // Exclude Sunday
-        const dateStr = current.toISOString().split("T")[0]; // YYYY-MM-DD
+        const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
         const label = `${weekdays[dayOfWeek]}, ${months[current.getMonth()]} ${current.getDate()}`;
         list.push({ value: dateStr, label });
       }
@@ -109,13 +118,16 @@ export default function BookingSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!formData.name || !formData.phone || !formData.serviceId || !formData.date || !formData.time) {
-      alert("Please fill in all required fields.");
+      setSubmitError("Fill in all required fields and choose an available time.");
       return;
     }
 
+    setSubmitError("");
+    setSubmitting(true);
     try {
-      const res = await fetch("http://localhost:3001/bookings", {
+      const res = await fetch("/api/clinic/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -132,7 +144,7 @@ export default function BookingSection() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || "Failed to schedule appointment");
       }
 
@@ -146,20 +158,23 @@ export default function BookingSection() {
         time: "",
       });
       setHoneypot("");
-    } catch (err: any) {
-      alert(err.message || "An error occurred while booking. Please try again.");
+    } catch (err) {
+      setSubmitError(err instanceof TypeError
+        ? "The connection dropped. Check with the clinic if you’re unsure whether your appointment was received."
+        : err instanceof Error ? err.message : "Could not book the appointment. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <section id="location" className="bg-white py-20 lg:py-28">
+    <section id="location" className="scroll-mt-24 bg-white py-20 lg:py-28">
       <div className="max-w-[1400px] mx-auto px-6 lg:px-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
           {/* Left - Form */}
           <div>
             <h2
               className="text-5xl lg:text-7xl font-medium tracking-tight leading-[1.05] mb-12"
-              style={{ fontFamily: "var(--font-playfair)" }}
             >
               Book Online
               <br />
@@ -184,6 +199,8 @@ export default function BookingSection() {
 
               <Input
                 type="text"
+                aria-label="Your name"
+                autoComplete="name"
                 placeholder="Your Name"
                 value={formData.name}
                 onChange={(e) =>
@@ -194,6 +211,8 @@ export default function BookingSection() {
               />
               <Input
                 type="email"
+                aria-label="Email address (optional)"
+                autoComplete="email"
                 placeholder="Email Address (Optional)"
                 value={formData.email}
                 onChange={(e) =>
@@ -203,6 +222,8 @@ export default function BookingSection() {
               />
               <Input
                 type="tel"
+                aria-label="Phone number"
+                autoComplete="tel"
                 placeholder="Phone Number"
                 value={formData.phone}
                 onChange={(e) =>
@@ -213,6 +234,7 @@ export default function BookingSection() {
               />
             <div className="relative">
               <select
+                aria-label="Treatment or service"
                 value={formData.serviceId}
                 onChange={handleServiceChange}
                 className={`w-full h-14 rounded-full border border-gray-200 px-6 pr-12 text-base bg-white outline-none focus:border-teal-500 appearance-none transition-all cursor-pointer ${
@@ -229,11 +251,13 @@ export default function BookingSection() {
               </select>
               <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
+            {serviceError && <p role="alert" className="text-sm text-red-800">Could not load treatments. <button type="button" className="font-semibold underline" onClick={() => retryServices((attempt) => attempt + 1)}>Retry</button></p>}
 
             <div className="space-y-4">
               <div className="relative">
                 <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <select
+                  aria-label="Appointment date"
                   value={formData.date}
                   onChange={handleDateChange}
                   className={`w-full h-14 rounded-full border border-gray-200 pl-12 pr-12 text-base bg-white outline-none focus:border-teal-500 appearance-none transition-all cursor-pointer ${
@@ -259,14 +283,17 @@ export default function BookingSection() {
                     </span>
                     {loadingSlots ? (
                       <p className="text-sm text-gray-400 font-medium">Loading available hours...</p>
+                    ) : slotError ? (
+                      <p role="alert" className="text-sm text-red-800">Could not load available times. <button type="button" className="font-semibold underline" onClick={() => retrySlots((attempt) => attempt + 1)}>Retry</button></p>
                     ) : availableSlots.length > 0 ? (
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
                         {availableSlots.map((slot) => {
                           const isSelected = formData.time === slot;
                           return (
                             <button
                               key={slot}
                               type="button"
+                              aria-pressed={isSelected}
                               onClick={() => setFormData({ ...formData, time: slot })}
                               className={`h-11 rounded-full text-xs font-bold transition-all cursor-pointer ${
                                 isSelected
@@ -289,11 +316,13 @@ export default function BookingSection() {
               </div>
 
               <div className="pt-2">
+                {submitError && <p role="alert" className="mb-3 text-sm text-red-800">{submitError}</p>}
                 <Button
                   type="submit"
+                  disabled={submitting || loadingSlots}
                   className="rounded-full bg-teal-700 text-white hover:bg-teal-800 px-8 py-6 text-base font-medium gap-3 group"
                 >
-                  Book Now
+                  {submitting ? "Booking…" : "Book Now"}
                   <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
                 </Button>
               </div>
@@ -369,7 +398,6 @@ export default function BookingSection() {
             
             <h3
               className="text-2xl font-semibold text-gray-800 mb-3"
-              style={{ fontFamily: "var(--font-playfair)" }}
             >
               Booking Submitted!
             </h3>

@@ -1,78 +1,43 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  NotFoundException,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { RequireAdministrator, RequireStaff } from '../auth/staff-access.guard';
+import { parseInput } from '../input';
+import { employeeInput } from '../users/staff-input';
 import { EmployeesService } from './employees.service';
-import { Employee } from './employee.entity';
 
 @Controller('employees')
+@RequireStaff(['page_employees'])
 export class EmployeesController {
-  constructor(private readonly employeesService: EmployeesService) {}
+  constructor(private readonly employees: EmployeesService) {}
 
   @Get()
-  findAll(): Promise<Employee[]> {
-    return this.employeesService.findAll();
+  findAll() {
+    return this.employees.findAll();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Employee> {
-    const employee = await this.employeesService.findById(id);
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
-    }
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const employee = await this.employees.findById(id);
+    if (!employee) throw new NotFoundException('Employee not found');
     return employee;
   }
 
   @Post()
-  create(
-    @Body()
-    body: {
-      name: string;
-      email: string;
-      password?: string;
-      phone?: string;
-      roleCode?: string;
-    },
-  ): Promise<Employee> {
-    return this.employeesService.create(
-      body.name,
-      body.email,
-      body.password,
-      body.phone,
-      body.roleCode,
-    );
+  @RequireAdministrator('page_employees', 'feat_employees_write')
+  create(@Body() input: unknown) {
+    const { name, email, password, phone, roleCode } = parseInput(employeeInput, input);
+    return this.employees.create(name, email, password, phone, roleCode);
   }
 
   @Put(':id')
-  update(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      name: string;
-      email: string;
-      password?: string;
-      phone?: string;
-      roleCode?: string;
-    },
-  ): Promise<Employee> {
-    return this.employeesService.update(
-      id,
-      body.name,
-      body.email,
-      body.password,
-      body.phone,
-      body.roleCode,
-    );
+  @RequireAdministrator('page_employees', 'feat_employees_write')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: unknown) {
+    const { name, email, password, phone, roleCode } = parseInput(employeeInput, input);
+    return this.employees.update(id, name, email, password, phone, roleCode);
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string): Promise<void> {
-    return this.employeesService.delete(id);
+  @RequireAdministrator('page_employees', 'feat_employees_delete')
+  delete(@Param('id', ParseUUIDPipe) id: string) {
+    return this.employees.delete(id);
   }
 }
